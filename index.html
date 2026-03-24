@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevCycle Quest — Multijugador</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#06080f; --panel:#0b1120; --panel2:#0f1a2e;
+  --border:#152240; --border2:#1e3460;
+  --cyan:#00e5ff; --orange:#ff6b35; --green:#39ff14;
+  --purple:#bf5fff; --gold:#ffd700; --red:#ff3b5c;
+  --teal:#00bcd4; --text:#c8deff; --dim:#3d5a80;
+  --glow-c:0 0 24px rgba(0,229,255,.5);
+  --glow-o:0 0 24px rgba(255,107,53,.5);
+  --glow-g:0 0 24px rgba(57,255,20,.5);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow-x:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;}
+
+/* ── SCANLINES + GRID ── */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);pointer-events:none;z-index:9998;}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.025) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;z-index:0;}
+
+/* ── PARTICLES ── */
+#particles{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
+.particle{position:absolute;width:2px;height:2px;background:var(--cyan);border-radius:50%;animation:drift linear infinite;opacity:0;}
+@keyframes drift{0%{transform:translateY(100vh) translateX(0);opacity:0;}10%{opacity:.6;}90%{opacity:.3;}100%{transform:translateY(-10vh) translateX(40px);opacity:0;}}
+
+/* ── BASE LAYOUT ── */
+.screen{position:relative;z-index:1;min-height:100vh;display:none;}
+.screen.active{display:flex;flex-direction:column;}
+
+/* ══════════════════════════════════════
+   LANDING SCREEN
+══════════════════════════════════════ */
+#landing{align-items:center;justify-content:center;padding:20px;}
+.landing-inner{max-width:780px;width:100%;text-align:center;}
+
+.logo-wrap{margin-bottom:12px;}
+.logo-main{font-family:'Orbitron',monospace;font-size:clamp(2.2rem,7vw,4.5rem);font-weight:900;letter-spacing:6px;line-height:1;color:var(--cyan);text-shadow:var(--glow-c);display:block;}
+.logo-main em{color:var(--orange);font-style:normal;}
+.logo-sub{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:4px;display:block;margin-top:6px;}
+
+.mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:32px 0;text-align:left;}
+@media(max-width:560px){.mode-cards{grid-template-columns:1fr;}}
+
+.mode-card{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:24px;cursor:pointer;transition:all .25s;position:relative;overflow:hidden;}
+.mode-card::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .25s;}
+.mode-card.host::before{background:radial-gradient(circle at 30% 50%,rgba(0,229,255,.08),transparent 70%);}
+.mode-card.player::before{background:radial-gradient(circle at 70% 50%,rgba(255,107,53,.08),transparent 70%);}
+.mode-card:hover{border-color:var(--cyan);transform:translateY(-3px);}
+.mode-card.player:hover{border-color:var(--orange);}
+.mode-card:hover::before{opacity:1;}
+.mode-card .mc-icon{font-size:2.5rem;margin-bottom:12px;display:block;}
+.mode-card .mc-title{font-family:'Orbitron',monospace;font-size:1rem;font-weight:700;color:#fff;letter-spacing:2px;margin-bottom:6px;}
+.mode-card.player .mc-title{color:var(--orange);}
+.mode-card .mc-desc{font-size:.88rem;color:var(--dim);line-height:1.5;}
+.mode-card .mc-tag{position:absolute;top:12px;right:12px;font-family:'Share Tech Mono',monospace;font-size:.6rem;background:var(--border);border-radius:3px;padding:3px 8px;color:var(--dim);letter-spacing:1px;}
+
+/* ══════════════════════════════════════
+   HOST SETUP SCREEN
+══════════════════════════════════════ */
+#host-setup{padding:24px;align-items:center;justify-content:center;}
+.setup-box{max-width:680px;width:100%;}
+.setup-title{font-family:'Orbitron',monospace;font-size:1.3rem;color:var(--cyan);letter-spacing:3px;margin-bottom:6px;text-shadow:var(--glow-c);}
+.setup-sub{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:2px;margin-bottom:28px;}
+
+.difficulty-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:28px;}
+@media(max-width:600px){.difficulty-grid{grid-template-columns:repeat(2,1fr) 1fr;}}
+.diff-card{background:var(--panel);border:2px solid var(--border);border-radius:8px;padding:14px 8px;text-align:center;cursor:pointer;transition:all .2s;}
+.diff-card:hover,.diff-card.selected{transform:translateY(-2px);}
+.diff-card .dc-icon{font-size:1.6rem;display:block;margin-bottom:6px;}
+.diff-card .dc-name{font-family:'Orbitron',monospace;font-size:.6rem;letter-spacing:1px;font-weight:700;margin-bottom:4px;}
+.diff-card .dc-lives{font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--dim);}
+.diff-card .dc-timer{font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--dim);}
+
+.diff-card[data-diff="easy"]       {border-color:#2d5a27;} .diff-card[data-diff="easy"].selected{border-color:var(--green);background:rgba(57,255,20,.07);box-shadow:var(--glow-g);}
+.diff-card[data-diff="easy"] .dc-name{color:var(--green);}
+.diff-card[data-diff="normal"]     {border-color:#1e4a6b;} .diff-card[data-diff="normal"].selected{border-color:var(--cyan);background:rgba(0,229,255,.07);box-shadow:var(--glow-c);}
+.diff-card[data-diff="normal"] .dc-name{color:var(--cyan);}
+.diff-card[data-diff="hard"]       {border-color:#5a3a1a;} .diff-card[data-diff="hard"].selected{border-color:var(--orange);background:rgba(255,107,53,.07);box-shadow:var(--glow-o);}
+.diff-card[data-diff="hard"] .dc-name{color:var(--orange);}
+.diff-card[data-diff="vhard"]      {border-color:#5a1a2a;} .diff-card[data-diff="vhard"].selected{border-color:var(--red);background:rgba(255,59,92,.07);}
+.diff-card[data-diff="vhard"] .dc-name{color:var(--red);}
+.diff-card[data-diff="immortal"]   {border-color:#3d1a5a;} .diff-card[data-diff="immortal"].selected{border-color:var(--purple);background:rgba(191,95,255,.07);}
+.diff-card[data-diff="immortal"] .dc-name{color:var(--purple);}
+
+.room-code-section{background:var(--panel);border:1px solid var(--border2);border-radius:8px;padding:20px;margin-bottom:20px;text-align:center;}
+.rcs-label{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:2px;margin-bottom:8px;}
+.room-code-display{font-family:'Orbitron',monospace;font-size:3rem;font-weight:900;color:var(--gold);letter-spacing:12px;text-shadow:0 0 30px rgba(255,215,0,.5);}
+.rcs-hint{font-family:'Share Tech Mono',monospace;font-size:.68rem;color:var(--dim);margin-top:6px;}
+
+.btn{padding:14px 28px;border-radius:6px;font-family:'Orbitron',monospace;font-size:.75rem;letter-spacing:3px;cursor:pointer;transition:all .2s;border:2px solid;text-transform:uppercase;}
+.btn-cyan{border-color:var(--cyan);color:var(--cyan);background:transparent;} .btn-cyan:hover{background:var(--cyan);color:var(--bg);box-shadow:var(--glow-c);}
+.btn-orange{border-color:var(--orange);color:var(--orange);background:transparent;} .btn-orange:hover{background:var(--orange);color:var(--bg);box-shadow:var(--glow-o);}
+.btn-green{border-color:var(--green);color:var(--green);background:transparent;} .btn-green:hover{background:var(--green);color:var(--bg);box-shadow:var(--glow-g);}
+.btn-dim{border-color:var(--border2);color:var(--dim);background:transparent;font-size:.7rem;}
+.btn-dim:hover{border-color:var(--text);color:var(--text);}
+.btn-full{width:100%;}
+
+/* ══════════════════════════════════════
+   PLAYER JOIN SCREEN
+══════════════════════════════════════ */
+#player-join{align-items:center;justify-content:center;padding:24px;}
+.join-box{max-width:440px;width:100%;text-align:center;}
+.join-title{font-family:'Orbitron',monospace;font-size:1.6rem;color:var(--orange);letter-spacing:3px;margin-bottom:6px;text-shadow:var(--glow-o);}
+
+.input-group{margin-bottom:16px;text-align:left;}
+.input-label{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:2px;margin-bottom:6px;display:block;}
+input[type=text]{width:100%;background:var(--panel);border:1px solid var(--border2);border-radius:6px;padding:14px 16px;color:#fff;font-family:'Share Tech Mono',monospace;font-size:1rem;letter-spacing:3px;outline:none;transition:border-color .2s;text-transform:uppercase;}
+input[type=text]:focus{border-color:var(--orange);}
+input[type=text].name-input{letter-spacing:1px;text-transform:none;}
+
+.avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px;}
+.avatar-opt{background:var(--panel);border:2px solid var(--border);border-radius:6px;padding:10px;font-size:1.4rem;text-align:center;cursor:pointer;transition:all .15s;}
+.avatar-opt:hover,.avatar-opt.sel{border-color:var(--orange);background:rgba(255,107,53,.1);transform:scale(1.1);}
+
+/* ══════════════════════════════════════
+   WAITING ROOM (HOST)
+══════════════════════════════════════ */
+#host-waiting{padding:20px;}
+.hw-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:gap;}
+.hw-code{font-family:'Orbitron',monospace;font-size:1rem;color:var(--dim);}
+.hw-code span{color:var(--gold);font-size:1.4rem;letter-spacing:6px;}
+.player-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px;min-height:200px;}
+.roster-card{background:var(--panel);border:1px solid var(--border2);border-radius:8px;padding:14px;display:flex;align-items:center;gap:10px;animation:popIn .3s ease;}
+@keyframes popIn{from{transform:scale(0.8);opacity:0;}to{transform:scale(1);opacity:1;}}
+.roster-avatar{font-size:1.8rem;}
+.roster-name{font-size:.95rem;font-weight:600;color:#fff;}
+.roster-ready{font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--green);}
+.roster-count{font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim);margin-bottom:16px;}
+
+/* ══════════════════════════════════════
+   PLAYER WAITING
+══════════════════════════════════════ */
+#player-waiting{align-items:center;justify-content:center;padding:24px;text-align:center;}
+.pw-status{font-family:'Share Tech Mono',monospace;font-size:.85rem;color:var(--green);letter-spacing:2px;margin-bottom:12px;animation:blink 1.2s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
+.pw-avatar{font-size:5rem;margin-bottom:12px;}
+.pw-name{font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--orange);margin-bottom:6px;}
+.pw-room{font-family:'Share Tech Mono',monospace;color:var(--dim);font-size:.8rem;}
+
+/* ══════════════════════════════════════
+   HOST GAME SCREEN
+══════════════════════════════════════ */
+#host-game{padding:0;}
+
+.host-topbar{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.htb-item{display:flex;flex-direction:column;}
+.htb-label{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:var(--dim);letter-spacing:1px;}
+.htb-value{font-family:'Orbitron',monospace;font-size:.9rem;font-weight:700;}
+.htb-value.cyan{color:var(--cyan);}
+.htb-value.gold{color:var(--gold);}
+.htb-value.green{color:var(--green);}
+
+.host-content{display:grid;grid-template-columns:1fr 300px;min-height:calc(100vh - 54px);}
+@media(max-width:900px){.host-content{grid-template-columns:1fr;}}
+
+.host-main{padding:20px;border-right:1px solid var(--border);}
+
+/* Timer ring */
+.timer-wrap{display:flex;justify-content:center;margin-bottom:20px;}
+.timer-ring{position:relative;width:100px;height:100px;}
+.timer-ring svg{transform:rotate(-90deg);}
+.timer-ring circle{fill:none;stroke-width:6;}
+.timer-bg{stroke:var(--border);}
+.timer-fg{stroke:var(--cyan);stroke-linecap:round;transition:stroke-dashoffset .9s linear,stroke .3s;}
+.timer-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',monospace;font-size:2rem;font-weight:900;color:var(--cyan);}
+
+.diff-badge{display:inline-block;font-family:'Orbitron',monospace;font-size:.6rem;letter-spacing:2px;padding:4px 12px;border-radius:3px;font-weight:700;margin-bottom:12px;}
+.diff-badge.easy{background:rgba(57,255,20,.15);color:var(--green);border:1px solid var(--green);}
+.diff-badge.normal{background:rgba(0,229,255,.15);color:var(--cyan);border:1px solid var(--cyan);}
+.diff-badge.hard{background:rgba(255,107,53,.15);color:var(--orange);border:1px solid var(--orange);}
+.diff-badge.vhard{background:rgba(255,59,92,.15);color:var(--red);border:1px solid var(--red);}
+.diff-badge.immortal{background:rgba(191,95,255,.15);color:var(--purple);border:1px solid var(--purple);}
+
+.q-number{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:2px;margin-bottom:8px;}
+.q-text{font-size:1.25rem;font-weight:700;color:#fff;line-height:1.4;margin-bottom:6px;}
+.q-story{font-size:.88rem;color:var(--dim);line-height:1.6;margin-bottom:16px;padding:12px;background:rgba(255,255,255,.03);border-left:3px solid var(--border2);border-radius:0 4px 4px 0;}
+.q-hint{font-family:'Share Tech Mono',monospace;font-size:.72rem;color:var(--purple);margin-bottom:16px;padding:8px 12px;background:rgba(191,95,255,.07);border-radius:4px;border:1px solid rgba(191,95,255,.2);}
+
+.options-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.opt-row{background:var(--panel2);border:1px solid var(--border2);border-radius:6px;padding:12px 16px;display:flex;align-items:center;gap:12px;transition:all .3s;}
+.opt-row.reveal-correct{border-color:var(--green);background:rgba(57,255,20,.08);}
+.opt-row.reveal-wrong{border-color:var(--red);background:rgba(255,59,92,.05);opacity:.6;}
+.opt-key{font-family:'Orbitron',monospace;font-size:.65rem;color:var(--dim);min-width:24px;}
+.opt-text{font-size:.95rem;color:var(--text);flex:1;}
+.opt-votes{margin-left:auto;display:flex;align-items:center;gap:6px;}
+.vote-bar{height:6px;border-radius:3px;background:var(--border);min-width:60px;overflow:hidden;}
+.vote-fill{height:100%;border-radius:3px;background:var(--cyan);transition:width .5s ease;}
+.vote-count{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);min-width:30px;text-align:right;}
+
+.response-meter{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.rm-label{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);}
+.rm-bar{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.rm-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));border-radius:4px;transition:width .4s ease;}
+.rm-count{font-family:'Orbitron',monospace;font-size:.85rem;color:var(--gold);}
+
+/* HOST LEADERBOARD SIDEBAR */
+.host-sidebar{padding:16px;overflow-y:auto;}
+.sb-title{font-family:'Orbitron',monospace;font-size:.7rem;color:var(--gold);letter-spacing:2px;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.sb-title::before{content:'';display:inline-block;width:8px;height:8px;background:var(--gold);border-radius:50%;animation:pulse 1.2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(.8);}}
+
+.lb-item{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px;transition:all .3s;}
+.lb-item.moved-up{animation:moveUp .4s ease;}
+@keyframes moveUp{0%{transform:translateY(12px);opacity:.5;}100%{transform:translateY(0);opacity:1;}}
+.lb-rank{font-family:'Orbitron',monospace;font-size:.75rem;color:var(--dim);min-width:22px;text-align:center;}
+.lb-rank.gold{color:var(--gold);}
+.lb-rank.silver{color:#c0c0c0;}
+.lb-rank.bronze{color:#cd7f32;}
+.lb-avatar{font-size:1.3rem;}
+.lb-name{font-size:.9rem;font-weight:600;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-xp{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--gold);}
+.lb-streak{font-size:.7rem;margin-left:2px;}
+
+/* ══════════════════════════════════════
+   PLAYER GAME SCREEN
+══════════════════════════════════════ */
+#player-game{padding:0;}
+.player-topbar{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;}
+.ptb-name{font-family:'Orbitron',monospace;font-size:.8rem;color:var(--orange);}
+.ptb-xp{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--gold);}
+.ptb-lives{font-size:.9rem;}
+
+.player-main{padding:20px;max-width:600px;margin:0 auto;}
+
+.player-timer{text-align:center;margin-bottom:20px;}
+.pt-ring{position:relative;width:80px;height:80px;margin:0 auto 8px;}
+.pt-ring svg{transform:rotate(-90deg);}
+.pt-ring circle{fill:none;stroke-width:5;}
+.pt-timer-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',monospace;font-size:1.6rem;font-weight:900;}
+
+.player-q{font-size:1.05rem;font-weight:700;color:#fff;line-height:1.4;margin-bottom:10px;}
+.player-story{font-size:.83rem;color:var(--dim);line-height:1.6;margin-bottom:14px;padding:10px;background:rgba(255,255,255,.03);border-left:2px solid var(--border2);border-radius:0 4px 4px 0;}
+.player-hint{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--purple);margin-bottom:12px;padding:8px;background:rgba(191,95,255,.07);border-radius:4px;}
+
+.player-options{display:flex;flex-direction:column;gap:10px;}
+.popt{background:var(--panel);border:2px solid var(--border2);border-radius:8px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:flex-start;gap:10px;text-align:left;}
+.popt:hover:not(:disabled){border-color:var(--orange);background:rgba(255,107,53,.07);}
+.popt:disabled{cursor:default;}
+.popt .pk{font-family:'Orbitron',monospace;font-size:.65rem;color:var(--dim);min-width:20px;padding-top:2px;}
+.popt .pt{font-size:.95rem;color:var(--text);line-height:1.4;}
+.popt.selected{border-color:var(--cyan);background:rgba(0,229,255,.08);}
+.popt.correct{border-color:var(--green);background:rgba(57,255,20,.1);}
+.popt.wrong{border-color:var(--red);background:rgba(255,59,92,.1);}
+
+.player-fb{margin-top:16px;padding:14px;border-radius:8px;border:1px solid;display:none;animation:fadeIn .3s ease;}
+.player-fb.show{display:block;}
+.player-fb.ok{border-color:var(--green);background:rgba(57,255,20,.07);}
+.player-fb.bad{border-color:var(--red);background:rgba(255,59,92,.07);}
+.player-fb .pf-title{font-family:'Orbitron',monospace;font-size:.7rem;letter-spacing:2px;margin-bottom:6px;}
+.player-fb.ok .pf-title{color:var(--green);}
+.player-fb.bad .pf-title{color:var(--red);}
+.player-fb .pf-body{font-size:.85rem;color:var(--text);line-height:1.6;}
+.player-fb .pf-concept{margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--cyan);}
+
+.waiting-next{text-align:center;margin-top:24px;padding:20px;background:var(--panel);border:1px solid var(--border);border-radius:8px;}
+.wn-label{font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim);letter-spacing:2px;margin-bottom:8px;animation:blink 1.2s infinite;}
+.wn-rank{font-family:'Orbitron',monospace;font-size:1.5rem;color:var(--gold);}
+
+/* ══════════════════════════════════════
+   FINAL SCORES
+══════════════════════════════════════ */
+#final-scores{padding:24px;align-items:center;justify-content:center;}
+.fs-inner{max-width:700px;width:100%;}
+.fs-title{font-family:'Orbitron',monospace;font-size:2rem;color:var(--gold);text-align:center;text-shadow:0 0 30px rgba(255,215,0,.5);margin-bottom:4px;}
+.fs-sub{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);text-align:center;letter-spacing:2px;margin-bottom:30px;}
+
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;margin-bottom:30px;height:180px;}
+.podium-spot{text-align:center;display:flex;flex-direction:column;align-items:center;}
+.pod-name{font-family:'Orbitron',monospace;font-size:.65rem;color:#fff;margin-bottom:4px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pod-avatar{font-size:2rem;margin-bottom:4px;}
+.pod-block{width:80px;display:flex;align-items:center;justify-content:center;border-radius:4px 4px 0 0;font-family:'Orbitron',monospace;font-size:1.2rem;font-weight:900;}
+.pod-block.p1{height:100px;background:linear-gradient(180deg,rgba(255,215,0,.3),rgba(255,215,0,.1));border:1px solid var(--gold);color:var(--gold);}
+.pod-block.p2{height:70px;background:linear-gradient(180deg,rgba(192,192,192,.3),rgba(192,192,192,.1));border:1px solid #c0c0c0;color:#c0c0c0;}
+.pod-block.p3{height:50px;background:linear-gradient(180deg,rgba(205,127,50,.3),rgba(205,127,50,.1));border:1px solid #cd7f32;color:#cd7f32;}
+
+.full-lb{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;}
+.flb-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.flb-row:last-child{border-bottom:none;}
+.flb-rank{font-family:'Orbitron',monospace;font-size:.8rem;min-width:28px;color:var(--dim);}
+.flb-avatar{font-size:1.4rem;}
+.flb-name{font-size:1rem;font-weight:600;color:#fff;flex:1;}
+.flb-correct{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--green);}
+.flb-xp{font-family:'Share Tech Mono',monospace;font-size:.85rem;color:var(--gold);font-weight:bold;}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-20px);}to{opacity:1;transform:translateX(0);}}
+
+/* ── TOAST ── */
+#toast{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast-msg{background:var(--panel);border:1px solid var(--border2);border-radius:6px;padding:10px 16px;font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--text);animation:toastIn .3s ease;box-shadow:0 4px 20px rgba(0,0,0,.5);}
+.toast-msg.green{border-color:var(--green);color:var(--green);}
+.toast-msg.gold{border-color:var(--gold);color:var(--gold);}
+@keyframes toastIn{from{transform:translateX(100px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+/* ── DIVIDER / BACK BTN ── */
+.back-btn{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);background:none;border:none;cursor:pointer;letter-spacing:1px;padding:0;margin-bottom:20px;display:flex;align-items:center;gap:6px;}
+.back-btn:hover{color:var(--text);}
+
+.section-title{font-family:'Orbitron',monospace;font-size:.75rem;color:var(--dim);letter-spacing:3px;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<div id="particles"></div>
+<div id="toast"></div>
+
+<!-- ══════════════════════════════
+  LANDING
+══════════════════════════════ -->
+<div id="landing" class="screen active">
+  <div class="landing-inner">
+    <div class="logo-wrap">
+      <span class="logo-main">DEV<em>CYCLE</em><br>QUEST</span>
+      <span class="logo-sub">// CICLO DE DESARROLLO DE SOFTWARE — EDICIÓN MULTIJUGADOR</span>
+    </div>
+    <p style="color:var(--dim);font-size:.9rem;margin-bottom:28px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">Ingeniería Informática · 8vo Semestre · NovaTech Hospital System</p>
+    <div class="mode-cards">
+      <div class="mode-card host" onclick="initTeacherAccess()">
+        <span class="mc-icon">🖥️</span>
+        <div class="mc-tag">PROYECTOR</div>
+        <div class="mc-title">SOY EL PROFESOR</div>
+        <div class="mc-desc">Crea la sala, elige la dificultad y controla el juego desde la pantalla grande. Ve el leaderboard en tiempo real.</div>
+      </div>
+      <div class="mode-card player" onclick="goTo('player-join')">
+        <span class="mc-icon">📱</span>
+        <div class="mc-tag">DISPOSITIVO</div>
+        <div class="mc-title">SOY ESTUDIANTE</div>
+        <div class="mc-desc">Ingresa el código de sala que aparece en el proyector, pon tu nombre y únete al desafío desde tu celular o PC.</div>
+      </div>
+    </div>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:1px;">⚡ Funciona en la misma red · Sin instalación · Un solo archivo HTML</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  TEACHER CREDENTIALS (Mostrar claves)
+══════════════════════════════ -->
+<div id="teacher-credentials" class="screen">
+  <div style="padding:24px;flex:1;display:flex;align-items:center;justify-content:center;">
+  <div class="setup-box">
+    <div class="setup-title" style="color:var(--cyan);margin-bottom:12px;text-align:center;">🔐 CREDENCIALES DEL PROFESOR</div>
+    <div class="setup-sub" style="margin-bottom:24px;text-align:center;">Tus credenciales de acceso han sido generadas</div>
+
+    <div style="background:var(--panel2);border:2px solid var(--border2);border-radius:8px;padding:24px;margin-bottom:20px;text-align:center;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:2px;margin-bottom:12px;">USUARIO</div>
+      <div id="cred-username" style="font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--cyan);font-weight:900;letter-spacing:2px;margin-bottom:24px;padding:12px;background:var(--panel);border-radius:6px;cursor:pointer;user-select:all;" title="Click para copiar">----</div>
+      
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:2px;margin-bottom:12px;">CONTRASEÑA</div>
+      <div id="cred-password" style="font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--orange);font-weight:900;letter-spacing:2px;margin-bottom:24px;padding:12px;background:var(--panel);border-radius:6px;cursor:pointer;user-select:all;" title="Click para copiar">----</div>
+
+      <button class="btn btn-dim" onclick="copyToClipboard('cred-username'); copyToClipboard('cred-password');" style="width:100%;margin-bottom:12px;">📋 COPIAR AMBAS</button>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--green);">✓ Credenciales copiadas</div>
+    </div>
+
+    <div style="background:rgba(255,107,53,.1);border:1px solid var(--orange);border-radius:8px;padding:16px;margin-bottom:20px;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--orange);letter-spacing:1px;margin-bottom:8px;">⚠️ IMPORTANTE</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--text);line-height:1.6;">
+        • Guarda estas credenciales en un lugar seguro<br>
+        • No las compartas con los estudiantes<br>
+        • Cada sesión genera nuevas credenciales<br>
+        • Usa estas credenciales para acceder a la configuración
+      </div>
+    </div>
+
+    <button class="btn btn-cyan btn-full" onclick="goTo('host-login')">CONTINUAR AL LOGIN ▶</button>
+  </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  HOST LOGIN (Validar credenciales)
+══════════════════════════════ -->
+<div id="host-login" class="screen">
+  <div style="padding:24px;flex:1;display:flex;align-items:center;justify-content:center;">
+  <div class="setup-box">
+    <button class="back-btn" onclick="resetAllAndGoHome()">← SALIR</button>
+    <div class="setup-title" style="color:var(--cyan);margin-bottom:12px;">🔓 ACCESO PROFESOR</div>
+    <div class="setup-sub" style="margin-bottom:24px;">Ingresa tu usuario y contraseña</div>
+
+    <div class="input-group">
+      <label class="input-label">USUARIO</label>
+      <input type="text" id="login-username" placeholder="Tu usuario" maxlength="30" autocomplete="off">
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">CONTRASEÑA</label>
+      <input type="password" id="login-password" placeholder="Tu contraseña" maxlength="30" autocomplete="off" onkeypress="if(event.key==='Enter') loginTeacher()">
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-cyan btn-full" onclick="loginTeacher()">VALIDAR ACCESO ▶</button>
+    </div>
+    
+    <div style="margin-top:20px;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:8px;text-align:center;">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:1px;margin-bottom:8px;">¿Olvidaste credenciales?</div>
+      <button class="btn btn-dim" onclick="resetAllAndGoHome()" style="width:100%;font-size:.65rem;">↻ GENERAR NUEVAS CREDENCIALES</button>
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  HOST SETUP
+══════════════════════════════ -->
+<div id="host-setup" class="screen">
+  <div style="padding:24px;flex:1;display:flex;align-items:center;justify-content:center;">
+  <div class="setup-box">
+    <button class="back-btn" onclick="resetAllAndGoHome()">← SALIR</button>
+    <div class="setup-title">CONFIGURAR SALA</div>
+    <div class="setup-sub">// SELECCIONA LA DIFICULTAD ANTES DE ABRIR LA SALA</div>
+
+    <div class="section-title">NIVEL DE DIFICULTAD</div>
+    <div class="difficulty-grid">
+      <div class="diff-card" data-diff="easy" onclick="selectDiff(this)">
+        <span class="dc-icon">🟢</span>
+        <div class="dc-name">EASY</div>
+        <div class="dc-lives">❤️❤️❤️❤️❤️ ×5</div>
+        <div class="dc-timer">⏱ 45s · Con pistas</div>
+      </div>
+      <div class="diff-card" data-diff="normal" onclick="selectDiff(this)">
+        <span class="dc-icon">🔵</span>
+        <div class="dc-name">NORMAL</div>
+        <div class="dc-lives">❤️❤️❤️ ×3</div>
+        <div class="dc-timer">⏱ 30s · Sin pistas</div>
+      </div>
+      <div class="diff-card selected" data-diff="hard" onclick="selectDiff(this)">
+        <span class="dc-icon">🟠</span>
+        <div class="dc-name">HARD</div>
+        <div class="dc-lives">❤️❤️ ×2</div>
+        <div class="dc-timer">⏱ 20s · Sin pistas</div>
+      </div>
+      <div class="diff-card" data-diff="vhard" onclick="selectDiff(this)">
+        <span class="dc-icon">🔴</span>
+        <div class="dc-name">VERY HARD</div>
+        <div class="dc-lives">❤️ ×1</div>
+        <div class="dc-timer">⏱ 15s · Sin pistas</div>
+      </div>
+      <div class="diff-card" data-diff="immortal" onclick="selectDiff(this)">
+        <span class="dc-icon">☠️</span>
+        <div class="dc-name">IMMORTAL DEV</div>
+        <div class="dc-lives">💀 ×1 — sin error</div>
+        <div class="dc-timer">⏱ 10s · Trampas</div>
+      </div>
+    </div>
+
+    <div class="section-title">CÓDIGO DE SALA</div>
+    <div class="room-code-section">
+      <div class="rcs-label">LOS ESTUDIANTES INGRESAN ESTE CÓDIGO</div>
+      <div class="room-code-display" id="room-code-display">----</div>
+      <div class="rcs-hint">El código se genera al crear la sala · Compártelo en el proyector</div>
+    </div>
+
+  <div style="display:flex;gap:12px;">
+      <button class="btn btn-cyan btn-full" onclick="createRoom()" id="create-room-btn">CREAR SALA Y GENERAR CÓDIGO ▶</button>
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  HOST WAITING ROOM
+══════════════════════════════ -->
+<div id="host-waiting" class="screen">
+  <div style="padding:20px;max-width:1000px;margin:0 auto;width:100%;">
+    <div class="hw-top">
+      <div>
+        <div style="font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--cyan);margin-bottom:4px;">SALA ABIERTA</div>
+        <div class="hw-code">Código: <span id="hw-code-display">----</span></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-green" onclick="startRound()" id="start-btn">▶ INICIAR JUEGO</button>
+        <button class="btn btn-dim" onclick="resetAll()">✕ CERRAR SALA</button>
+      </div>
+    </div>
+
+    <div class="roster-count">
+      <span id="player-count">0</span> estudiantes conectados — esperando...
+    </div>
+
+    <div class="section-title">JUGADORES EN SALA</div>
+    <div class="player-roster" id="player-roster">
+      <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.8rem;letter-spacing:1px;">
+        Esperando que los estudiantes ingresen el código...
+      </div>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:16px;">
+      <div style="font-family:'Orbitron',monospace;font-size:.65rem;color:var(--dim);letter-spacing:2px;margin-bottom:8px;">📋 INSTRUCCIONES PARA COMPARTIR</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--text);line-height:2;">
+        1. Comparte este mismo archivo HTML con tus estudiantes<br>
+        2. Ellos abren el archivo → "Soy Estudiante" → ingresan el código<br>
+        3. Todos deben estar en la <strong style="color:var(--cyan)">misma red o computador</strong> (abre varias pestañas para demo)<br>
+        4. Cuando todos estén listos → INICIAR JUEGO
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  PLAYER JOIN
+══════════════════════════════ -->
+<div id="player-join" class="screen">
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;">
+  <div class="join-box">
+    <button class="back-btn" onclick="goTo('landing')">← VOLVER</button>
+    <div class="join-title">UNIRSE A SALA</div>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:1px;margin-bottom:24px;">Ingresa el código que aparece en el proyector</p>
+
+    <div class="input-group">
+      <label class="input-label">CÓDIGO DE SALA</label>
+      <input type="text" id="join-code" maxlength="4" placeholder="ABCD" oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <div class="input-group">
+      <label class="input-label">TU NOMBRE / ALIAS</label>
+      <input type="text" class="name-input" id="join-name" maxlength="16" placeholder="Tu nombre">
+    </div>
+
+    <div class="section-title" style="margin-top:8px;">ELIGE TU AVATAR</div>
+    <div class="avatar-grid" id="avatar-grid"></div>
+
+    <button class="btn btn-orange btn-full" onclick="joinRoom()">UNIRSE AL DESAFÍO ▶</button>
+  </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  PLAYER WAITING
+══════════════════════════════ -->
+<div id="player-waiting" class="screen">
+  <div class="pw-avatar" id="pw-avatar">🧑‍💻</div>
+  <div class="pw-name" id="pw-name">Tu nombre</div>
+  <div class="pw-room">Sala: <span id="pw-room" style="color:var(--gold);">----</span></div>
+  <div style="margin:24px 0;width:60px;height:1px;background:var(--border);"></div>
+  <div class="pw-status">✓ CONECTADO — ESPERANDO AL PROFESOR</div>
+  <p style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);margin-top:12px;">El juego comenzará cuando el profesor lo inicie</p>
+</div>
+
+<!-- ══════════════════════════════
+  HOST GAME
+══════════════════════════════ -->
+<div id="host-game" class="screen">
+  <div class="host-topbar">
+    <div class="htb-item">
+      <div class="htb-label">PREGUNTA</div>
+      <div class="htb-value cyan" id="hg-qnum">1/10</div>
+    </div>
+    <div class="htb-item">
+      <div class="htb-label">JUGADORES</div>
+      <div class="htb-value gold" id="hg-players">0</div>
+    </div>
+    <div class="htb-item">
+      <div class="htb-label">RESPONDIERON</div>
+      <div class="htb-value green" id="hg-answered">0/0</div>
+    </div>
+    <div class="htb-item" style="margin-left:auto;">
+      <div class="htb-label">DIFICULTAD</div>
+      <div class="htb-value" id="hg-diff" style="color:var(--orange);">HARD</div>
+    </div>
+    <div style="margin-left:16px;display:flex;gap:8px;">
+      <button class="btn btn-cyan" onclick="revealAndNext()" id="reveal-btn" style="font-size:.65rem;padding:8px 16px;">REVELAR RESPUESTA</button>
+      <button class="btn btn-dim" style="font-size:.65rem;padding:8px 16px;" onclick="resetAll()">✕ FIN</button>
+    </div>
+  </div>
+
+  <div class="host-content">
+    <div class="host-main">
+      <div class="timer-wrap">
+        <div class="timer-ring">
+          <svg viewBox="0 0 100 100" width="100" height="100">
+            <circle class="timer-bg" cx="50" cy="50" r="44"/>
+            <circle class="timer-fg" cx="50" cy="50" r="44" id="timer-circle"
+              stroke-dasharray="276.46" stroke-dashoffset="0"/>
+          </svg>
+          <div class="timer-num" id="timer-display">30</div>
+        </div>
+      </div>
+
+      <div class="diff-badge hard" id="hg-diff-badge">HARD</div>
+      <div class="q-number" id="hg-q-number">PREGUNTA 1 — FASE: PLANEACIÓN</div>
+      <div class="q-story" id="hg-q-story">Cargando escenario...</div>
+      <div class="q-text" id="hg-q-text">Cargando pregunta...</div>
+      <div class="q-hint" id="hg-q-hint" style="display:none;">💡 Pista: ...</div>
+
+      <div class="response-meter">
+        <div class="rm-label">RESPUESTAS RECIBIDAS</div>
+        <div class="rm-bar"><div class="rm-fill" id="rm-fill" style="width:0%"></div></div>
+        <div class="rm-count" id="rm-count">0/0</div>
+      </div>
+
+      <div class="options-list" id="hg-options"></div>
+    </div>
+
+    <div class="host-sidebar">
+      <div class="sb-title">🏆 LEADERBOARD EN VIVO</div>
+      <div id="host-leaderboard"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  PLAYER GAME
+══════════════════════════════ -->
+<div id="player-game" class="screen">
+  <div class="player-topbar">
+    <div class="ptb-name" id="pg-name">Jugador</div>
+    <div class="ptb-xp" id="pg-xp">⚡ 0 XP</div>
+    <div class="ptb-lives" id="pg-lives">❤️❤️❤️</div>
+  </div>
+  <div class="player-main">
+    <div class="player-timer">
+      <div class="pt-ring">
+        <svg viewBox="0 0 80 80" width="80" height="80">
+          <circle class="timer-bg" cx="40" cy="40" r="34" fill="none" stroke="var(--border)" stroke-width="5"/>
+          <circle cx="40" cy="40" r="34" fill="none" stroke="var(--cyan)" stroke-width="5"
+            stroke-linecap="round" stroke-dasharray="213.6" stroke-dashoffset="0"
+            id="pt-circle" style="transform:rotate(-90deg);transform-origin:center;transition:stroke-dashoffset .9s linear,stroke .3s;"/>
+        </svg>
+        <div class="pt-timer-num" id="pt-display" style="color:var(--cyan);">30</div>
+      </div>
+    </div>
+
+    <div class="q-number" id="pg-qnum" style="text-align:center;margin-bottom:10px;">PREGUNTA 1/10</div>
+    <div class="player-story" id="pg-story">Cargando...</div>
+    <div class="player-q" id="pg-question">Cargando pregunta...</div>
+    <div class="player-hint" id="pg-hint" style="display:none;">💡 ...</div>
+
+    <div class="player-options" id="pg-options"></div>
+    <div class="player-fb" id="pg-feedback">
+      <div class="pf-title" id="pg-fb-title"></div>
+      <div class="pf-body" id="pg-fb-body"></div>
+      <div class="pf-concept" id="pg-fb-concept"></div>
+    </div>
+
+    <div class="waiting-next" id="pg-waiting" style="display:none;">
+      <div class="wn-label">ESPERANDO SIGUIENTE PREGUNTA...</div>
+      <div class="wn-rank" id="pg-rank-display">📊 Calculando posición...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+  FINAL SCORES
+══════════════════════════════ -->
+<div id="final-scores" class="screen">
+  <div class="fs-inner">
+    <div class="fs-title" id="fs-title">🏆 FIN DE LA MISIÓN</div>
+    <div class="fs-sub" id="fs-sub">EVALUACIÓN FINAL — NOVALTECH HOSPITAL SYSTEM</div>
+    <div class="podium" id="fs-podium"></div>
+    <div class="full-lb" id="fs-full-lb"></div>
+    <div style="text-align:center;">
+      <button class="btn btn-cyan" onclick="resetAll()" style="margin-right:12px;">↺ NUEVA PARTIDA</button>
+      <button class="btn btn-dim" onclick="goTo('landing')">⌂ MENÚ PRINCIPAL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// DATA
+// ══════════════════════════════════════
+const AVATARS = ['🧑‍💻','👩‍💻','🦊','🐼','🤖','👾','🦄','🐙','🔥','⚡','🦅','🐲'];
+
+const DIFFICULTY = {
+  easy:    { name:'EASY',        timer:45, lives:5, hint:true,  badge:'easy',    color:'var(--green)',  immortal:false },
+  normal:  { name:'NORMAL',      timer:30, lives:3, hint:false, badge:'normal',  color:'var(--cyan)',   immortal:false },
+  hard:    { name:'HARD',        timer:20, lives:2, hint:false, badge:'hard',    color:'var(--orange)', immortal:false },
+  vhard:   { name:'VERY HARD',   timer:15, lives:1, hint:false, badge:'vhard',   color:'var(--red)',    immortal:false },
+  immortal:{ name:'IMMORTAL DEV',timer:10, lives:1, hint:false, badge:'immortal',color:'var(--purple)', immortal:true  },
+};
+
+const QUESTIONS = [
+  {
+    phase:'PLANEACIÓN', role:'🗺️ Project Manager',
+    story:'El CTO acaba de renunciar. NovaTech ganó el contrato del hospital pero no hay plan. El cliente ya pagó el anticipo. El equipo pregunta: ¿por dónde empezamos?',
+    question:'¿Cuál es el primer artefacto que debe producir el equipo?',
+    hint:'Piensa en qué necesitas saber ANTES de escribir una sola línea de código.',
+    options:[
+      {text:'Prototipar rápido para mostrarle algo al cliente', correct:false},
+      {text:'Plan de Proyecto: alcance, cronograma, recursos y riesgos', correct:true},
+      {text:'Diseñar la base de datos porque es lo más técnico', correct:false},
+      {text:'Contratar más desarrolladores para acelerar', correct:false},
+    ],
+    ok:'✅ CORRECTO — La planeación define el mapa. Sin ella, el equipo trabaja a ciegas.',
+    bad:'❌ ERROR — Sin planear, el caos que encontraste al llegar se repite. El plan protege al equipo y al cliente.',
+    concept:'→ CONCEPTO: Plan de Proyecto define alcance, WBS, cronograma, presupuesto y riesgos. Entregable: Project Charter.',
+    immortalDecoy:'Hacer un sprint de discovery de 1 semana para explorar tecnologías antes de comprometerse con un plan',
+  },
+  {
+    phase:'REQUISITOS', role:'📋 Analista de Requisitos',
+    story:'El médico jefe: "Necesito que sea rápido". El jefe de farmacia: "Quiero reportes en Excel". TI: "Que soporte 500 usuarios simultáneos". Tu equipo no sabe qué construir.',
+    question:'¿Cómo clasificas correctamente: "Rápido", "Reportes en Excel", "500 usuarios"?',
+    hint:'Funcional = QUÉ hace el sistema. No funcional = CÓMO se comporta.',
+    options:[
+      {text:'"Rápido"=funcional · "Excel"=no funcional · "500 usuarios"=funcional', correct:false},
+      {text:'"Rápido"=no funcional · "Excel"=funcional · "500 usuarios"=no funcional', correct:true},
+      {text:'Todos son funcionales porque los pidieron los usuarios', correct:false},
+      {text:'Ninguno es válido, son demasiado ambiguos', correct:false},
+    ],
+    ok:'✅ CORRECTO — RF=qué hace (reportes). RNF=cómo opera (velocidad, escalabilidad).',
+    bad:'❌ ERROR — Confundir funcionales/no funcionales lleva a arquitecturas incorrectas y SLAs imposibles.',
+    concept:'→ RF: Casos de uso, flujos. RNF: Rendimiento, seguridad, escalabilidad. Técnica: Historias de Usuario + Criterios de Aceptación.',
+    immortalDecoy:'"Rápido"=RNF · "Excel"=RF · "500 usuarios"=restricción técnica de arquitectura, no requisito',
+  },
+  {
+    phase:'REQUISITOS', role:'📋 Analista de Requisitos',
+    story:'Tienes 80 requisitos documentados tras semanas de reuniones. El gerente pregunta: "¿Cómo sabemos que el cliente aprobó estos requisitos formalmente?"',
+    question:'¿Qué técnica y artefacto usas para validar y aprobar los requisitos con el cliente?',
+    hint:'El cliente debe FIRMAR algo antes de que el equipo continúe.',
+    options:[
+      {text:'Enviar un correo con el listado y esperar respuesta', correct:false},
+      {text:'Walkthrough de validación + firma del cliente en el SRS (IEEE 830)', correct:true},
+      {text:'Pasar al diseño, ya tuvimos suficientes reuniones', correct:false},
+      {text:'Un prototipo aprobado equivale a requisitos aprobados', correct:false},
+    ],
+    ok:'✅ CORRECTO — El SRS firmado es el contrato técnico. Protege al equipo del scope creep.',
+    bad:'❌ ERROR — Sin SRS firmado, el cliente puede cambiar requisitos indefinidamente sin costo extra.',
+    concept:'→ SRS (IEEE 830): Especificación de Requisitos de Software. Walkthrough = reunión de validación formal con el cliente.',
+    immortalDecoy:'User Story Map validado digitalmente con herramienta como Miro, sin necesidad de documento formal en metodologías ágiles',
+  },
+  {
+    phase:'DISEÑO', role:'🏗️ Arquitecto de Software',
+    story:'El sistema debe manejar historiales médicos confidenciales, integrarse con laboratorio externo y soportar 1,000 consultas/minuto en urgencias.',
+    question:'¿Qué patrón arquitectónico es más adecuado para este escenario?',
+    hint:'Considera: escalabilidad independiente, aislamiento de fallos y seguridad por módulo.',
+    options:[
+      {text:'Monolito con BD SQL centralizada — más simple de desarrollar', correct:false},
+      {text:'Microservicios + API Gateway separando módulos (citas, historial, farmacia)', correct:true},
+      {text:'Serverless puro porque reduce costos en la nube', correct:false},
+      {text:'Peer-to-peer para que cada hospital tenga su nodo', correct:false},
+    ],
+    ok:'✅ CORRECTO — Microservicios permiten escalar módulos independientemente y aislar fallos críticos.',
+    bad:'❌ ERROR — Un monolito falla en bloque: si cae un módulo, cae todo el hospital.',
+    concept:'→ Microservicios: cada servicio tiene su propia BD y proceso. API Gateway centraliza auth. Patrón: Service Discovery.',
+    immortalDecoy:'Arquitectura hexagonal (ports & adapters) sobre un monolito modular — escalabilidad sin complejidad de microservicios',
+  },
+  {
+    phase:'DISEÑO', role:'🗄️ Diseñador de BD',
+    story:'El equipo debate: MongoDB vs PostgreSQL para historiales médicos variables (alergias, imágenes DICOM, diagnósticos) + transacciones de citas y facturación.',
+    question:'¿Cuál es la estrategia de datos más apropiada?',
+    hint:'¿Existe "la mejor base de datos"? ¿O la mejor BD para cada problema?',
+    options:[
+      {text:'Solo PostgreSQL — los hospitales siempre han usado SQL', correct:false},
+      {text:'Solo MongoDB — los datos médicos son variables', correct:false},
+      {text:'Persistencia políglota: PostgreSQL para transacciones + MongoDB para historiales clínicos', correct:true},
+      {text:'Redis como BD principal por su velocidad', correct:false},
+    ],
+    ok:'✅ CORRECTO — Cada motor para lo que hace mejor. No existe la BD perfecta universal.',
+    bad:'❌ ERROR — Forzar todos los datos al mismo motor crea ineficiencias estructurales graves.',
+    concept:'→ Persistencia Políglota: SQL para ACID/relaciones, NoSQL para flexibilidad/escala, Redis para caché/sesiones.',
+    immortalDecoy:'NewSQL (CockroachDB) — combina ACID de SQL con escalabilidad horizontal de NoSQL, ideal para sistemas híbridos críticos',
+  },
+  {
+    phase:'DESARROLLO', role:'💻 Tech Lead',
+    story:'8 devs trabajan 2 semanas en ramas separadas. Al integrar: 47 conflictos de merge, nadie sabe qué funcionalidad está lista. El cronograma colapsa.',
+    question:'¿Qué metodología + práctica habría evitado este caos?',
+    hint:'La clave está en la FRECUENCIA de integración, no en la cantidad de desarrolladores.',
+    options:[
+      {text:'Scrum + sprints de 2 semanas + Continuous Integration con merges frecuentes al trunk', correct:true},
+      {text:'Waterfall estricto donde cada dev termina su parte antes de mostrarla', correct:false},
+      {text:'Pair programming obligatorio para todos los devs', correct:false},
+      {text:'Un senior revisa todo el código al final del sprint', correct:false},
+    ],
+    ok:'✅ CORRECTO — CI + trunk-based development: merges frecuentes = conflictos pequeños = integración controlada.',
+    bad:'❌ ERROR — Sin CI, el "merge hell" invalida semanas de trabajo. La integración tardía es el mayor anti-patrón.',
+    concept:'→ Continuous Integration: integrar al trunk varias veces al día + build automático + tests. Herramientas: GitHub Actions, Jenkins.',
+    immortalDecoy:'Feature flags + trunk-based development sin sprints formales — integración continua sin overhead de Scrum',
+  },
+  {
+    phase:'PRUEBAS', role:'🧪 QA Engineer',
+    story:'El módulo de prescripción está listo. Un bug puede recetar dosis incorrectas. Un dev dice: "¿Para qué pruebas unitarias si ya hicimos pruebas de sistema?"',
+    question:'¿Qué estrategia aplica correctamente la pirámide de testing?',
+    hint:'La pirámide tiene 4 niveles. Cada nivel tiene un propósito diferente.',
+    options:[
+      {text:'Solo pruebas manuales E2E — son las más realistas para el médico', correct:false},
+      {text:'Solo unitarias del algoritmo de dosis — es lo más crítico', correct:false},
+      {text:'Pirámide completa: unitarias + integración + sistema + aceptación con médicos', correct:true},
+      {text:'Pruebas exploratorias manuales + code review es suficiente', correct:false},
+    ],
+    ok:'✅ CORRECTO — En software médico, omitir cualquier nivel puede costar vidas. Sin excusas.',
+    bad:'❌ ERROR — El 85% de bugs críticos se detectan con unitarias. En salud, un error de dosis es inaceptable.',
+    concept:'→ Pirámide: muchas unitarias (rápidas) → integración → pocas E2E (lentas). Regla: más automatización abajo.',
+    immortalDecoy:'Contract testing (Pact) entre microservicios + property-based testing para el algoritmo de dosis — más robusto que la pirámide clásica',
+  },
+  {
+    phase:'DESPLIEGUE', role:'🚀 DevOps Engineer',
+    story:'El sistema pasa todas las pruebas. El hospital opera 24/7. No puede tener downtime. El CTO interino dice: "Hacemos el despliegue el sábado a medianoche y rezamos."',
+    question:'¿Qué estrategia de despliegue minimiza el riesgo con rollback inmediato?',
+    hint:'El hospital no puede tolerar ni 1 minuto de caída. Necesitas poder volver atrás en segundos.',
+    options:[
+      {text:'Big Bang: se apaga todo, se sube la nueva versión, se vuelve a encender', correct:false},
+      {text:'Blue-Green Deployment: dos ambientes idénticos, se conmuta tráfico sin downtime', correct:true},
+      {text:'Subir el código vía FTP al servidor de producción y reiniciar', correct:false},
+      {text:'Canary Release al 100% de usuarios desde el primer día', correct:false},
+    ],
+    ok:'✅ CORRECTO — Blue-Green: rollback en segundos volviendo al ambiente anterior. Zero downtime.',
+    bad:'❌ ERROR — En un hospital, el downtime puede ser fatal. El Big Bang sin rollback rápido es un riesgo inaceptable.',
+    concept:'→ Blue-Green: ambiente blue=producción activa, green=nueva versión. Conmutar load balancer. Rollback instantáneo.',
+    immortalDecoy:'Canary Release al 5% del tráfico durante 48h con feature flags — más seguro que Blue-Green por validación gradual',
+  },
+  {
+    phase:'MANTENIMIENTO', role:'🔧 Site Reliability Engineer',
+    story:'3 meses en producción. Un lunes llega el reporte: "El módulo de citas tarda 8 segundos". El equipo no tiene métricas históricas. Nadie sabe cuándo empezó.',
+    question:'¿Qué práctica habría detectado el problema ANTES de que los usuarios lo reportaran?',
+    hint:'Si no puedes medirlo, no puedes gestionarlo. Necesitas visibilidad interna del sistema.',
+    options:[
+      {text:'Soporte reactivo: atender reportes en orden de llegada', correct:false},
+      {text:'Reiniciar el servidor todos los lunes como mantenimiento preventivo', correct:false},
+      {text:'Observabilidad: métricas (Prometheus) + logs (ELK) + trazas (Jaeger) + alertas proactivas', correct:true},
+      {text:'Contratar más servidores cuando sea lento', correct:false},
+    ],
+    ok:'✅ CORRECTO — O11y detecta anomalías antes que el usuario. Los SLAs del hospital lo exigen.',
+    bad:'❌ ERROR — El soporte reactivo siempre llega tarde. Perder visibilidad de producción es volar con los ojos cerrados.',
+    concept:'→ Observabilidad (O11y): Métricas (Prometheus/Grafana) + Logs (ELK) + Trazas Distribuidas (Jaeger). SRE estándar.',
+    immortalDecoy:'OpenTelemetry unificado — un solo estándar de instrumentación que reemplaza métricas, logs y trazas por separado',
+  },
+  {
+    phase:'CICLO COMPLETO', role:'🏁 Tech Lead — Cierre',
+    story:'6 meses después. El sistema está en producción. El cliente pide: telemedicina, app móvil, integración con EPS. El equipo pregunta: "¿Esto es mantenimiento o proyecto nuevo?"',
+    question:'¿Cómo clasificas estas solicitudes y qué proceso activas?',
+    hint:'El SDLC no termina con el despliegue. ¿Qué tipo de mantenimiento aplica aquí?',
+    options:[
+      {text:'Es mantenimiento correctivo — se implementan directamente sin proceso formal', correct:false},
+      {text:'Mantenimiento perfectivo — cada nueva funcionalidad mayor activa un mini-ciclo SDLC completo', correct:true},
+      {text:'Se congela el sistema y se crea uno nuevo desde cero', correct:false},
+      {text:'El mantenimiento solo es corrección de bugs — esto requiere contrato nuevo', correct:false},
+    ],
+    ok:'✅ CORRECTO — El SDLC es cíclico. Cada mejora mayor reinicia el ciclo: requisitos, diseño, desarrollo, pruebas, despliegue.',
+    bad:'❌ ERROR — Agregar telemedicina sin proceso formal crea deuda técnica y riesgo de contrato.',
+    concept:'→ Tipos de mantenimiento: Correctivo (bugs) · Adaptativo (cambios de entorno) · Perfectivo (nuevas features) · Preventivo (refactoring).',
+    immortalDecoy:'Architecture Decision Records (ADR) + RFC formal para evaluar si el scope justifica un nuevo bounded context o es extensión del existente',
+  },
+];
+
+// ══════════════════════════════════════
+// STATE
+// ══════════════════════════════════════
+let STATE = {
+  mode: null,           // 'host' | 'player'
+  roomCode: null,
+  difficulty: 'hard',
+  players: {},          // { id: { name, avatar, xp, lives, correct, combo, answered } }
+  myId: null,
+  myName: null,
+  myAvatar: null,
+  currentQ: 0,
+  phase: 'lobby',      // lobby | question | reveal | done
+  timerInterval: null,
+  timerValue: 0,
+  selectedAvatar: AVATARS[0],
+  teacherAuthenticated: false,
+};
+
+// BroadcastChannel for cross-tab communication
+let BC = null;
+
+// ══════════════════════════════════════
+// INIT
+// ══════════════════════════════════════
+(function init() {
+  // Particles
+  const pEl = document.getElementById('particles');
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 12) + 's';
+    p.style.animationDelay = (Math.random() * 10) + 's';
+    pEl.appendChild(p);
+  }
+
+  // Avatar grid
+  const ag = document.getElementById('avatar-grid');
+  AVATARS.forEach((a, i) => {
+    const d = document.createElement('div');
+    d.className = 'avatar-opt' + (i === 0 ? ' sel' : '');
+    d.textContent = a;
+    d.onclick = () => {
+      document.querySelectorAll('.avatar-opt').forEach(x => x.classList.remove('sel'));
+      d.classList.add('sel');
+      STATE.selectedAvatar = a;
+    };
+    ag.appendChild(d);
+  });
+})();
+
+// ══════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════
+function goTo(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+}
+
+// ══════════════════════════════════════
+// HOST LOGIN & CREDENTIALS
+// ══════════════════════════════════════
+
+function generateRandomString(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function generateTeacherCredentials() {
+  const username = 'PROF_' + generateRandomString(8);
+  const password = generateRandomString(12);
+  const passwordHash = CryptoJS.SHA256(password).toString();
+  
+  return {
+    username: username,
+    password: password,
+    hash: passwordHash,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function initTeacherAccess() {
+  // Verificar si ya existen credenciales en esta sesión
+  if (window.teacherCredentials) {
+    goTo('host-login');
+    return;
+  }
+  
+  // Generar nuevas credenciales
+  window.teacherCredentials = generateTeacherCredentials();
+  
+  // Mostrar credenciales
+  document.getElementById('cred-username').textContent = window.teacherCredentials.username;
+  document.getElementById('cred-password').textContent = window.teacherCredentials.password;
+  
+  goTo('teacher-credentials');
+}
+
+function copyToClipboard(elementId) {
+  const element = document.getElementById(elementId);
+  const text = element.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('✓ Copiado: ' + text, 'green');
+  }).catch(() => {
+    showToast('Error al copiar', '');
+  });
+}
+
+function loginTeacher() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  
+  if (!username || !password) {
+    showToast('Ingresa usuario y contraseña', '');
+    return;
+  }
+  
+  if (!window.teacherCredentials) {
+    showToast('Credenciales no encontradas. Intenta de nuevo.', '');
+    return;
+  }
+  
+  // Validar contra las credenciales almacenadas
+  const passwordHash = CryptoJS.SHA256(password).toString();
+  
+  if (username === window.teacherCredentials.username && 
+      passwordHash === window.teacherCredentials.hash) {
+    // Login exitoso
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+    STATE.teacherAuthenticated = true;
+    goTo('host-setup');
+    showToast('✓ Acceso concedido. Bienvenido Profesor.', 'green');
+  } else {
+    showToast('Usuario o contraseña incorrectos', '');
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-password').focus();
+  }
+}
+
+function resetAllAndGoHome() {
+  clearInterval(STATE.timerInterval);
+  clearInterval(STATE.pollInterval);
+  if (BC) { BC.close(); BC = null; }
+  if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
+  window.teacherCredentials = null;
+  STATE.teacherAuthenticated = false;
+  STATE = { mode:null, roomCode:null, difficulty:'hard', players:{}, myId:null, myName:null, myAvatar:null, currentQ:0, phase:'lobby', timerInterval:null, timerValue:0, selectedAvatar:AVATARS[0] };
+  goTo('landing');
+  showToast('Sesión cerrada', '');
+}
+
+// ══════════════════════════════════════
+// HOST SETUP
+// ══════════════════════════════════════
+function selectDiff(el) {
+  document.querySelectorAll('.diff-card').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  STATE.difficulty = el.dataset.diff;
+}
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function createRoom() {
+  STATE.mode = 'host';
+  STATE.roomCode = generateCode();
+  STATE.players = {};
+  STATE.currentQ = 0;
+  STATE.phase = 'lobby';
+
+  document.getElementById('room-code-display').textContent = STATE.roomCode;
+  document.getElementById('hw-code-display').textContent = STATE.roomCode;
+
+  // Open BroadcastChannel
+  BC = new BroadcastChannel('devcycle_' + STATE.roomCode);
+  BC.onmessage = handleHostMessage;
+
+  // Save room state
+  saveRoomState();
+
+  goTo('host-waiting');
+  showToast('Sala creada: ' + STATE.roomCode, 'gold');
+}
+
+function saveRoomState() {
+  const roomData = {
+    code: STATE.roomCode,
+    difficulty: STATE.difficulty,
+    phase: STATE.phase,
+    currentQ: STATE.currentQ,
+    players: STATE.players,
+    question: STATE.currentQ < QUESTIONS.length ? QUESTIONS[STATE.currentQ] : null,
+  };
+  localStorage.setItem('dcq_room_' + STATE.roomCode, JSON.stringify(roomData));
+}
+
+function handleHostMessage(event) {
+  const msg = event.data;
+  if (msg.roomCode !== STATE.roomCode) return;
+
+  if (msg.type === 'join') {
+    // Permitir unirse en lobby o en question (si se unen tarde)
+    if (STATE.phase !== 'lobby' && STATE.phase !== 'question') return;
+    STATE.players[msg.playerId] = {
+      id: msg.playerId,
+      name: msg.name,
+      avatar: msg.avatar,
+      xp: 0,
+      lives: DIFFICULTY[STATE.difficulty].lives,
+      correct: 0,
+      combo: 0,
+      answered: false,
+    };
+    saveRoomState();
+    updateRoster();
+    // ACK back to player
+    BC.postMessage({ type:'joined', roomCode: STATE.roomCode, playerId: msg.playerId, difficulty: STATE.difficulty });
+  }
+
+  if (msg.type === 'answer') {
+    if (STATE.phase !== 'question') return;
+    const p = STATE.players[msg.playerId];
+    if (!p || p.answered) return;
+    p.answered = true;
+    p.lastAnswer = msg.optionIndex;
+    p.lastCorrect = msg.correct;
+
+    if (msg.correct) {
+      p.combo++;
+      const bonus = Math.max(0, STATE.timerValue) * 3;
+      const comboBonus = p.combo >= 2 ? (p.combo - 1) * 25 : 0;
+      p.xp += 100 + bonus + comboBonus;
+      p.correct++;
+    } else {
+      p.combo = 0;
+      if (DIFFICULTY[STATE.difficulty].immortal) {
+        p.lives = 0;
+      } else {
+        p.lives = Math.max(0, p.lives - 1);
+      }
+    }
+    saveRoomState();
+    updateAnsweredCount();
+    updateHostLeaderboard();
+  }
+}
+
+function updateRoster() {
+  const roster = document.getElementById('player-roster');
+  const players = Object.values(STATE.players);
+  document.getElementById('player-count').textContent = players.length;
+
+  if (players.length === 0) {
+    roster.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--dim);font-family:\'Share Tech Mono\',monospace;font-size:.8rem;letter-spacing:1px;">Esperando que los estudiantes ingresen el código...</div>';
+    return;
+  }
+  roster.innerHTML = players.map(p => `
+    <div class="roster-card">
+      <div class="roster-avatar">${p.avatar}</div>
+      <div>
+        <div class="roster-name">${p.name}</div>
+        <div class="roster-ready">✓ conectado</div>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════
+// PLAYER JOIN
+// ══════════════════════════════════════
+function joinRoom() {
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  const name = document.getElementById('join-name').value.trim();
+  if (!code || code.length !== 4) { showToast('Ingresa un código de 4 letras', ''); return; }
+  if (!name) { showToast('Ingresa tu nombre', ''); return; }
+
+  // Check if room exists
+  const roomData = localStorage.getItem('dcq_room_' + code);
+  if (!roomData) { 
+    showToast('Sala no encontrada. Verifica el código que aparece en el proyector.', ''); 
+    return; 
+  }
+  const room = JSON.parse(roomData);
+  
+  // Allow joining if room is in lobby (waiting) or starting question
+  if (room.phase !== 'lobby' && room.phase !== 'question') { 
+    showToast('El juego ha terminado. Espera la siguiente ronda.', ''); 
+    return; 
+  }
+
+  STATE.mode = 'player';
+  STATE.roomCode = code;
+  STATE.myId = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  STATE.myName = name;
+  STATE.myAvatar = STATE.selectedAvatar;
+
+  BC = new BroadcastChannel('devcycle_' + code);
+  BC.onmessage = handlePlayerMessage;
+
+  // Send join
+  BC.postMessage({ type:'join', roomCode: code, playerId: STATE.myId, name, avatar: STATE.selectedAvatar });
+
+  document.getElementById('pw-avatar').textContent = STATE.myAvatar;
+  document.getElementById('pw-name').textContent = STATE.myName;
+  document.getElementById('pw-room').textContent = STATE.roomCode;
+
+  goTo('player-waiting');
+  showToast('¡Conectado a la sala ' + code + '!', 'green');
+
+  // Poll for game start
+  STATE.pollInterval = setInterval(checkGameStart, 800);
+}
+
+function checkGameStart() {
+  const roomData = localStorage.getItem('dcq_room_' + STATE.roomCode);
+  if (!roomData) return;
+  const room = JSON.parse(roomData);
+  if (room.phase === 'question') {
+    clearInterval(STATE.pollInterval);
+    loadPlayerQuestion(room);
+  } else if (room.phase === 'done') {
+    clearInterval(STATE.pollInterval);
+    showFinalScores(room.players);
+  }
+}
+
+function handlePlayerMessage(event) {
+  const msg = event.data;
+  if (msg.roomCode !== STATE.roomCode) return;
+
+  if (msg.type === 'joined' && msg.playerId === STATE.myId) {
+    STATE.playerDifficulty = msg.difficulty;
+    const diff = DIFFICULTY[msg.difficulty];
+    STATE.myLives = diff.lives;
+    STATE.myXP = 0;
+    updatePlayerTopbar();
+  }
+
+  if (msg.type === 'question_start') {
+    loadPlayerQuestion(msg);
+  }
+
+  if (msg.type === 'reveal') {
+    revealPlayerAnswer(msg);
+  }
+
+  if (msg.type === 'game_over') {
+    clearInterval(STATE.pollInterval);
+    showFinalScores(msg.players);
+  }
+}
+
+// ══════════════════════════════════════
+// HOST GAME
+// ══════════════════════════════════════
+function startRound() {
+  if (Object.keys(STATE.players).length === 0) {
+    showToast('Necesitas al menos 1 jugador para iniciar', '');
+    return;
+  }
+  STATE.phase = 'question';
+  STATE.currentQ = 0;
+  // Reset player stats
+  Object.values(STATE.players).forEach(p => {
+    p.xp = 0; p.lives = DIFFICULTY[STATE.difficulty].lives;
+    p.correct = 0; p.combo = 0;
+  });
+  loadHostQuestion();
+  goTo('host-game');
+}
+
+function loadHostQuestion() {
+  if (STATE.currentQ >= QUESTIONS.length) { endGame(); return; }
+
+  const q = QUESTIONS[STATE.currentQ];
+  const diff = DIFFICULTY[STATE.difficulty];
+
+  // Reset answered state
+  Object.values(STATE.players).forEach(p => { p.answered = false; delete p.lastAnswer; delete p.lastCorrect; });
+  STATE.phase = 'question';
+  saveRoomState();
+
+  // Update topbar
+  document.getElementById('hg-qnum').textContent = `${STATE.currentQ+1}/10`;
+  document.getElementById('hg-players').textContent = Object.keys(STATE.players).length;
+  document.getElementById('hg-diff').textContent = diff.name;
+  document.getElementById('hg-diff-badge').textContent = diff.name;
+  document.getElementById('hg-diff-badge').className = 'diff-badge ' + diff.badge;
+
+  // Question content
+  document.getElementById('hg-q-number').textContent = `PREGUNTA ${STATE.currentQ+1} — FASE: ${q.phase}`;
+  document.getElementById('hg-q-story').textContent = q.story;
+  document.getElementById('hg-q-text').textContent = q.question;
+
+  const hintEl = document.getElementById('hg-q-hint');
+  if (diff.hint) {
+    hintEl.style.display = 'block';
+    hintEl.textContent = '💡 Pista: ' + q.hint;
+  } else {
+    hintEl.style.display = 'none';
+  }
+
+  // Options
+  const optList = document.getElementById('hg-options');
+  const keys = ['A','B','C','D'];
+  // In immortal mode, replace one wrong option with immortal decoy
+  let options = [...q.options];
+  if (STATE.difficulty === 'immortal' && q.immortalDecoy) {
+    // Replace last wrong option with decoy
+    const lastWrong = options.map((o,i) => ({...o,i})).filter(o=>!o.correct).pop();
+    if (lastWrong) {
+      options[lastWrong.i] = { text: q.immortalDecoy, correct: false, isDecoy: true };
+    }
+  }
+  STATE.currentOptions = options;
+
+  optList.innerHTML = options.map((o, i) => `
+    <div class="opt-row" id="host-opt-${i}">
+      <div class="opt-key">${keys[i]}</div>
+      <div class="opt-text">${o.text}${o.isDecoy ? ' <span style="color:var(--purple);font-size:.7rem;">[☠️ TRAMPA]</span>' : ''}</div>
+      <div class="opt-votes">
+        <div class="vote-bar"><div class="vote-fill" id="vf-${i}" style="width:0%"></div></div>
+        <div class="vote-count" id="vc-${i}">0</div>
+      </div>
+    </div>`).join('');
+
+  // Response meter
+  updateAnsweredCount();
+  document.getElementById('rm-fill').style.width = '0%';
+  document.getElementById('reveal-btn').textContent = 'REVELAR RESPUESTA';
+  document.getElementById('reveal-btn').disabled = false;
+
+  updateHostLeaderboard();
+
+  // Broadcast question to players
+  BC.postMessage({
+    type: 'question_start',
+    roomCode: STATE.roomCode,
+    questionIndex: STATE.currentQ,
+    question: q,
+    options: options,
+    difficulty: STATE.difficulty,
+    timerSeconds: diff.timer,
+  });
+
+  // Start timer
+  startHostTimer(diff.timer);
+}
+
+function startHostTimer(seconds) {
+  clearInterval(STATE.timerInterval);
+  STATE.timerValue = seconds;
+  const circ = document.getElementById('timer-circle');
+  const circum = 276.46;
+
+  function tick() {
+    const pct = STATE.timerValue / seconds;
+    circ.style.strokeDashoffset = circum * (1 - pct);
+    document.getElementById('timer-display').textContent = STATE.timerValue;
+
+    // Color transition
+    if (pct > 0.5) { circ.style.stroke = 'var(--cyan)'; document.getElementById('timer-display').style.color = 'var(--cyan)'; }
+    else if (pct > 0.25) { circ.style.stroke = 'var(--orange)'; document.getElementById('timer-display').style.color = 'var(--orange)'; }
+    else { circ.style.stroke = 'var(--red)'; document.getElementById('timer-display').style.color = 'var(--red)'; }
+
+    if (STATE.timerValue <= 0) {
+      clearInterval(STATE.timerInterval);
+      revealAndNext();
+      return;
+    }
+    STATE.timerValue--;
+  }
+  tick();
+  STATE.timerInterval = setInterval(tick, 1000);
+}
+
+function updateAnsweredCount() {
+  const players = Object.values(STATE.players);
+  const answered = players.filter(p => p.answered).length;
+  const total = players.length;
+  document.getElementById('hg-answered').textContent = `${answered}/${total}`;
+  document.getElementById('rm-count').textContent = `${answered}/${total}`;
+  document.getElementById('rm-fill').style.width = total > 0 ? (answered/total*100) + '%' : '0%';
+
+  // Update vote bars
+  const keys = [0,1,2,3];
+  keys.forEach(i => {
+    const count = players.filter(p => p.answered && p.lastAnswer === i).length;
+    const pct = total > 0 ? (count/total*100) : 0;
+    const vf = document.getElementById('vf-'+i);
+    const vc = document.getElementById('vc-'+i);
+    if (vf) vf.style.width = pct + '%';
+    if (vc) vc.textContent = count;
+  });
+}
+
+function revealAndNext() {
+  clearInterval(STATE.timerInterval);
+  STATE.phase = 'reveal';
+  document.getElementById('reveal-btn').disabled = true;
+
+  const options = STATE.currentOptions;
+  options.forEach((o, i) => {
+    const row = document.getElementById('host-opt-'+i);
+    if (!row) return;
+    if (o.correct) row.classList.add('reveal-correct');
+    else row.classList.add('reveal-wrong');
+  });
+
+  // Tell players to reveal
+  BC.postMessage({
+    type: 'reveal',
+    roomCode: STATE.roomCode,
+    correctIndex: options.findIndex(o => o.correct),
+    question: QUESTIONS[STATE.currentQ],
+  });
+
+  saveRoomState();
+  updateHostLeaderboard();
+
+  // Auto-advance after 4s
+  setTimeout(() => {
+    STATE.currentQ++;
+    if (STATE.currentQ >= QUESTIONS.length) {
+      endGame();
+    } else {
+      loadHostQuestion();
+    }
+  }, 4500);
+
+  document.getElementById('reveal-btn').textContent = 'AVANZANDO...';
+}
+
+function updateHostLeaderboard() {
+  const lb = document.getElementById('host-leaderboard');
+  const sorted = Object.values(STATE.players).sort((a,b) => b.xp - a.xp);
+  lb.innerHTML = sorted.slice(0,10).map((p, i) => {
+    const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const rankSymbol = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+    const streak = p.combo >= 3 ? '🔥' : p.combo >= 2 ? '⚡' : '';
+    return `<div class="lb-item">
+      <div class="lb-rank ${rankClass}">${rankSymbol}</div>
+      <div class="lb-avatar">${p.avatar}</div>
+      <div class="lb-name">${p.name}</div>
+      <div class="lb-xp">⚡${p.xp}</div>
+      <div class="lb-streak">${streak}</div>
+    </div>`;
+  }).join('');
+}
+
+function endGame() {
+  clearInterval(STATE.timerInterval);
+  STATE.phase = 'done';
+  saveRoomState();
+
+  BC.postMessage({
+    type: 'game_over',
+    roomCode: STATE.roomCode,
+    players: STATE.players,
+  });
+
+  showFinalScores(STATE.players);
+}
+
+// ══════════════════════════════════════
+// PLAYER GAME
+// ══════════════════════════════════════
+function loadPlayerQuestion(data) {
+  STATE.phase = 'question';
+  STATE.hasAnswered = false;
+  goTo('player-game');
+
+  const q = data.question || QUESTIONS[data.questionIndex];
+  const options = data.options || q.options;
+  const diff = DIFFICULTY[data.difficulty || STATE.playerDifficulty || 'hard'];
+
+  document.getElementById('pg-qnum').textContent = `PREGUNTA ${(data.currentQ || data.questionIndex || 0)+1}/10`;
+  document.getElementById('pg-story').textContent = q.story;
+  document.getElementById('pg-question').textContent = q.question;
+
+  const hintEl = document.getElementById('pg-hint');
+  if (diff.hint) { hintEl.style.display = 'block'; hintEl.textContent = '💡 ' + q.hint; }
+  else { hintEl.style.display = 'none'; }
+
+  const keys = ['A','B','C','D'];
+  const opts = document.getElementById('pg-options');
+  opts.innerHTML = options.map((o, i) => `
+    <button class="popt" id="pg-opt-${i}" onclick="playerAnswer(${i}, ${o.correct})">
+      <span class="pk">${keys[i]}</span>
+      <span class="pt">${o.text}</span>
+    </button>`).join('');
+
+  document.getElementById('pg-feedback').className = 'player-fb';
+  document.getElementById('pg-waiting').style.display = 'none';
+
+  // Start player timer
+  startPlayerTimer(data.timerSeconds || diff.timer, data.difficulty || STATE.playerDifficulty || 'hard');
+  updatePlayerTopbar();
+}
+
+function startPlayerTimer(seconds, diffKey) {
+  clearInterval(STATE.timerInterval);
+  STATE.timerValue = seconds;
+  const circ = document.getElementById('pt-circle');
+  const circum = 213.6;
+  const numEl = document.getElementById('pt-display');
+
+  function tick() {
+    const pct = STATE.timerValue / seconds;
+    circ.style.strokeDashoffset = circum * (1 - pct);
+    numEl.textContent = STATE.timerValue;
+
+    if (pct > 0.5) { circ.style.stroke = 'var(--cyan)'; numEl.style.color = 'var(--cyan)'; }
+    else if (pct > 0.25) { circ.style.stroke = 'var(--orange)'; numEl.style.color = 'var(--orange)'; }
+    else { circ.style.stroke = 'var(--red)'; numEl.style.color = 'var(--red)'; }
+
+    if (STATE.timerValue <= 0) {
+      clearInterval(STATE.timerInterval);
+      if (!STATE.hasAnswered) timeOut();
+      return;
+    }
+    STATE.timerValue--;
+  }
+  tick();
+  STATE.timerInterval = setInterval(tick, 1000);
+}
+
+function playerAnswer(idx, correct) {
+  if (STATE.hasAnswered) return;
+  STATE.hasAnswered = true;
+  clearInterval(STATE.timerInterval);
+
+  document.querySelectorAll('.popt').forEach(b => b.disabled = true);
+  document.getElementById('pg-opt-'+idx).classList.add(correct ? 'correct' : 'wrong');
+
+  if (correct) {
+    STATE.myXP = (STATE.myXP || 0) + 100 + Math.max(0, STATE.timerValue) * 3;
+    showPlayerFeedback(true, QUESTIONS[STATE.currentQ]);
+  } else {
+    STATE.myLives = Math.max(0, (STATE.myLives || 1) - 1);
+    showPlayerFeedback(false, QUESTIONS[STATE.currentQ]);
+  }
+
+  // Send to host
+  BC.postMessage({
+    type: 'answer',
+    roomCode: STATE.roomCode,
+    playerId: STATE.myId,
+    optionIndex: idx,
+    correct: correct,
+    timerValue: STATE.timerValue,
+  });
+
+  updatePlayerTopbar();
+
+  // Poll for next question
+  STATE.pollInterval = setInterval(() => {
+    const roomData = localStorage.getItem('dcq_room_' + STATE.roomCode);
+    if (!roomData) return;
+    const room = JSON.parse(roomData);
+    if (room.phase === 'done') {
+      clearInterval(STATE.pollInterval);
+      showFinalScores(room.players);
+    }
+  }, 500);
+}
+
+function timeOut() {
+  STATE.hasAnswered = true;
+  STATE.myLives = Math.max(0, (STATE.myLives || 1) - 1);
+  document.querySelectorAll('.popt').forEach(b => b.disabled = true);
+  showPlayerFeedback(false, QUESTIONS[STATE.currentQ], true);
+  BC.postMessage({ type:'answer', roomCode: STATE.roomCode, playerId: STATE.myId, optionIndex:-1, correct:false, timerValue:0 });
+  updatePlayerTopbar();
+}
+
+function showPlayerFeedback(ok, q, timeout) {
+  const fb = document.getElementById('pg-feedback');
+  fb.className = 'player-fb show ' + (ok ? 'ok' : 'bad');
+  document.getElementById('pg-fb-title').textContent = timeout ? '⏰ TIEMPO AGOTADO' : (ok ? '✅ CORRECTO' : '❌ INCORRECTO');
+  document.getElementById('pg-fb-body').textContent = ok ? q.ok.replace('✅ CORRECTO — ','') : q.bad.replace('❌ ERROR — ','');
+  document.getElementById('pg-fb-concept').textContent = q.concept;
+  document.getElementById('pg-waiting').style.display = 'block';
+}
+
+function revealPlayerAnswer(msg) {
+  const opts = document.querySelectorAll('.popt');
+  opts.forEach((b, i) => {
+    b.disabled = true;
+    if (i === msg.correctIndex) b.classList.add('correct');
+  });
+}
+
+function updatePlayerTopbar() {
+  document.getElementById('pg-name').textContent = (STATE.myAvatar||'') + ' ' + (STATE.myName||'Jugador');
+  document.getElementById('pg-xp').textContent = '⚡ ' + (STATE.myXP || 0) + ' XP';
+  const lives = STATE.myLives || 0;
+  const diff = DIFFICULTY[STATE.playerDifficulty || STATE.difficulty || 'hard'];
+  const maxL = diff.lives;
+  document.getElementById('pg-lives').textContent = '❤️'.repeat(lives) + '🖤'.repeat(Math.max(0, maxL - lives));
+}
+
+// ══════════════════════════════════════
+// FINAL SCORES
+// ══════════════════════════════════════
+function showFinalScores(playersObj) {
+  const players = Object.values(playersObj).sort((a,b) => b.xp - a.xp);
+  goTo('final-scores');
+
+  const avgCorrect = players.length > 0 ? players.reduce((s,p) => s + (p.correct||0), 0) / players.length : 0;
+  const pct = Math.round((avgCorrect / QUESTIONS.length) * 100);
+
+  let title, sub;
+  if (pct >= 80) { title = '🏆 HOSPITAL SYSTEM: ENTREGADO'; sub = 'NovaTech firma el contrato de mantenimiento. ¡Equipo élite!'; }
+  else if (pct >= 60) { title = '✅ SISTEMA FUNCIONAL'; sub = 'El hospital acepta con observaciones. Hay deuda técnica.'; }
+  else { title = '💀 CONTRATO EN RIESGO'; sub = 'El equipo necesita reforzar los fundamentos del SDLC.'; }
+
+  document.getElementById('fs-title').textContent = title;
+  document.getElementById('fs-sub').textContent = sub;
+
+  // Podium
+  const podium = document.getElementById('fs-podium');
+  const p1 = players[0], p2 = players[1], p3 = players[2];
+  const podSpot = (p, rank, cls) => p ? `
+    <div class="podium-spot">
+      <div class="pod-name">${p.name}</div>
+      <div class="pod-avatar">${p.avatar}</div>
+      <div class="pod-block ${cls}">${rank}</div>
+    </div>` : '';
+
+  podium.innerHTML = podSpot(p2,'2','p2') + podSpot(p1,'1','p1') + podSpot(p3,'3','p3');
+
+  // Full list
+  const lb = document.getElementById('fs-full-lb');
+  lb.innerHTML = players.map((p, i) => `
+    <div class="flb-row">
+      <div class="flb-rank">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</div>
+      <div class="flb-avatar">${p.avatar}</div>
+      <div class="flb-name">${p.name}</div>
+      <div class="flb-correct">${p.correct||0}/10 correctas</div>
+      <div class="flb-xp">⚡ ${p.xp} XP</div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════
+function resetAll() {
+  if (STATE.mode === 'host') {
+    resetAllAndGoHome();
+  } else {
+    clearInterval(STATE.timerInterval);
+    clearInterval(STATE.pollInterval);
+    if (BC) { BC.close(); BC = null; }
+    if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
+    STATE = { mode:null, roomCode:null, difficulty:'hard', players:{}, myId:null, myName:null, myAvatar:null, currentQ:0, phase:'lobby', timerInterval:null, timerValue:0, selectedAvatar:AVATARS[0] };
+    goTo('landing');
+  }
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'toast-msg ' + (type||'');
+  el.textContent = msg;
+  t.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+</script>
+</body>
+</html>
