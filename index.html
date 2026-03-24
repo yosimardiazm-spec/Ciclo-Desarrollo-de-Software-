@@ -2510,12 +2510,20 @@ function showFinalScores(playersObj) {
 // ══════════════════════════════════════
 function resetAll() {
   if (STATE.mode === 'host') {
-    // Profesor: resetear sesión completamente
-    clearInterval(STATE.timerInterval);
-    clearInterval(STATE.pollInterval);
-    if (BC) { BC.close(); BC = null; }
-    if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
-    resetAllAndGoHome();
+    // Si hay un juego en curso, finalizarlo primero para que los alumnos reciban el estado final
+    if (STATE.phase === 'question' || STATE.phase === 'reveal') {
+      endGame();
+    }
+
+    // Dar tiempo a que el mensaje se propague y los alumnos hagan su último poll
+    setTimeout(() => {
+      clearInterval(STATE.timerInterval);
+      clearInterval(STATE.pollInterval);
+      if (BC) { BC.close(); BC = null; }
+      // Nota: No borramos localStorage aquí inmediatamente para que los alumnos 
+      // puedan ver los resultados finales si aún están en la sala.
+      resetAllAndGoHome();
+    }, 1000);
   } else {
     // Estudiante: resetear solo sus datos
     clearInterval(STATE.timerInterval);
