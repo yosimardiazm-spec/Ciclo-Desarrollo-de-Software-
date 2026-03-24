@@ -1493,7 +1493,7 @@ function loadHostQuestion() {
 
   updateHostLeaderboard();
 
-  // Broadcast question to players
+  // Broadcast question to players (same-browser via BC)
   BC.postMessage({
     type: 'question_start',
     roomCode: STATE.roomCode,
@@ -1503,6 +1503,9 @@ function loadHostQuestion() {
     difficulty: STATE.difficulty,
     timerSeconds: diff.timer,
   });
+
+  // Save AGAIN now that currentOptions is set (Firebase needs this for remote players)
+  saveRoomState();
 
   // Start timer
   startHostTimer(diff.timer);
@@ -1631,11 +1634,18 @@ function loadPlayerQuestion(data) {
   STATE.hasAnswered = false;
   goTo('player-game');
 
-  const q = data.question || QUESTIONS[data.questionIndex];
-  const options = data.options || q.options;
+  // Support both BroadcastChannel format (data.question, data.questionIndex, data.options)
+  // and Firebase room state format (data.currentQ, data.currentOptions, data.difficulty)
+  const qIndex = data.questionIndex !== undefined ? data.questionIndex : (data.currentQ || 0);
+  STATE.currentQ = qIndex;
+  const q = data.question || QUESTIONS[qIndex];
+  if (!q) { console.error('No question found for index:', qIndex); return; }
+  
+  const options = data.options || data.currentOptions || q.options;
   const diff = DIFFICULTY[data.difficulty || STATE.playerDifficulty || 'hard'];
+  STATE.playerDifficulty = data.difficulty || STATE.playerDifficulty || 'hard';
 
-  document.getElementById('pg-qnum').textContent = `PREGUNTA ${(data.currentQ || data.questionIndex || 0)+1}/10`;
+  document.getElementById('pg-qnum').textContent = `PREGUNTA ${qIndex + 1}/10`;
   document.getElementById('pg-story').textContent = q.story;
   document.getElementById('pg-question').textContent = q.question;
 
