@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DevCycle Quest — Multijugador</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -412,7 +414,10 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
 <div id="host-setup" class="screen">
   <div style="padding:24px;flex:1;display:flex;align-items:center;justify-content:center;">
   <div class="setup-box">
-    <button class="back-btn" onclick="resetAllAndGoHome()">← SALIR</button>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="back-btn" onclick="goTo('host-login')" style="flex:1;">← ATRÁS</button>
+      <button class="btn btn-dim" onclick="resetAllAndGoHome()" style="font-size:.65rem;padding:8px 12px;margin:0;">✕ SALIR</button>
+    </div>
     <div class="setup-title">CONFIGURAR SALA</div>
     <div class="setup-sub">// SELECCIONA LA DIFICULTAD ANTES DE ABRIR LA SALA</div>
 
@@ -476,7 +481,8 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-green" onclick="startRound()" id="start-btn">▶ INICIAR JUEGO</button>
-        <button class="btn btn-dim" onclick="resetAll()">✕ CERRAR SALA</button>
+        <button class="btn btn-cyan" onclick="goTo('host-setup')" style="font-size:.65rem;padding:8px 16px;">⚙️ CONFIG</button>
+        <button class="btn btn-dim" onclick="resetAllAndGoHome()">✕ SALIR</button>
       </div>
     </div>
 
@@ -547,6 +553,10 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
 ══════════════════════════════ -->
 <div id="host-game" class="screen">
   <div class="host-topbar">
+    <div class="htb-item">
+      <div class="htb-label">CÓDIGO SALA</div>
+      <div class="htb-value gold" id="hg-room-code" style="font-size:1.2rem;letter-spacing:3px;">----</div>
+    </div>
     <div class="htb-item">
       <div class="htb-label">PREGUNTA</div>
       <div class="htb-value cyan" id="hg-qnum">1/10</div>
@@ -839,7 +849,41 @@ const QUESTIONS = [
 ];
 
 // ══════════════════════════════════════
-// STATE
+// FIREBASE CONFIGURATION
+// ══════════════════════════════════════
+// TODO: Reemplaza esto con tu configuración de Firebase
+// 1. Ve a https://firebase.google.com
+// 2. Crea un proyecto
+// 3. Agrega una app web
+// 4. Copia tu configuración aquí
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBjaedthTUgPe_CzB06zcRGwFiKpO2dJFc",
+  authDomain: "devcycle-quest.firebaseapp.com",
+  projectId: "devcycle-quest",
+  databaseURL: "https://devcycle-quest-default-rtdb.firebaseio.com",
+  storageBucket: "devcycle-quest.appspot.com",
+  messagingSenderId: "258218101514",
+  appId: "1:258218101514:web:619f0273ab3fe2ab6288f3"
+};
+
+// Inicializar Firebase
+let fbApp = null;
+let fbDatabase = null;
+
+function initFirebase() {
+  try {
+    fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    fbDatabase = firebase.database();
+    console.log('✅ Firebase inicializado correctamente');
+    return true;
+  } catch (error) {
+    console.error('❌ Error inicializando Firebase:', error);
+    showToast('⚠️ Firebase no configurado. Funciona en red local.', '');
+    return false;
+  }
+}
+
 // ══════════════════════════════════════
 let STATE = {
   mode: null,           // 'host' | 'player'
@@ -864,6 +908,23 @@ let BC = null;
 // INIT
 // ══════════════════════════════════════
 (function init() {
+  // Inicializar Firebase
+  initFirebase();
+  
+  // Limpiar salas antiguas/completadas del localStorage
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('dcq_room_'))
+    .forEach(k => {
+      try {
+        const room = JSON.parse(localStorage.getItem(k));
+        if (room.phase === 'done') {
+          localStorage.removeItem(k);
+        }
+      } catch (e) {
+        localStorage.removeItem(k);
+      }
+    });
+
   // Particles
   const pEl = document.getElementById('particles');
   for (let i = 0; i < 20; i++) {
@@ -891,9 +952,18 @@ let BC = null;
 })();
 
 // ══════════════════════════════════════
-// NAVIGATION
+// NAVIGATION (Protegida)
 // ══════════════════════════════════════
 function goTo(screenId) {
+  // Listar pantallas solo para profesor autenticado
+  const professorScreens = ['host-setup', 'host-waiting', 'host-game', 'teacher-credentials', 'host-login'];
+  
+  if (professorScreens.includes(screenId) && !STATE.teacherAuthenticated) {
+    showToast('🚫 Acceso denegado.\n\nEsta es una vista solo para el profesor.', '');
+    console.warn('❌ Intento no autorizado de acceso a:', screenId);
+    return;
+  }
+  
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
 }
@@ -1012,6 +1082,11 @@ function generateCode() {
 }
 
 function createRoom() {
+  if (!STATE.teacherAuthenticated) {
+    showToast('❌ Debes estar autenticado como profesor', '');
+    return;
+  }
+  
   STATE.mode = 'host';
   STATE.roomCode = generateCode();
   STATE.players = {};
@@ -1025,11 +1100,15 @@ function createRoom() {
   BC = new BroadcastChannel('devcycle_' + STATE.roomCode);
   BC.onmessage = handleHostMessage;
 
-  // Save room state
+  // Save room state to localStorage - IMPORTANTE para que estudiantes la encuentren
   saveRoomState();
 
   goTo('host-waiting');
-  showToast('Sala creada: ' + STATE.roomCode, 'gold');
+  
+  console.log('✅ Sala creada:', STATE.roomCode);
+  console.log('📍 Guardada en localStorage como:', 'dcq_room_' + STATE.roomCode);
+  
+  showToast('✅ SALA CREADA: ' + STATE.roomCode + '\n\n📋 Comparte este código con los estudiantes', 'gold');
 }
 
 function saveRoomState() {
@@ -1040,8 +1119,17 @@ function saveRoomState() {
     currentQ: STATE.currentQ,
     players: STATE.players,
     question: STATE.currentQ < QUESTIONS.length ? QUESTIONS[STATE.currentQ] : null,
+    updatedAt: new Date().toISOString(),
   };
+  
+  // Guardar en localStorage (para red local)
   localStorage.setItem('dcq_room_' + STATE.roomCode, JSON.stringify(roomData));
+  
+  // Guardar en Firebase (para redes diferentes)
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + STATE.roomCode).set(roomData)
+      .catch(err => console.warn('⚠️ Error sincronizando con Firebase:', err));
+  }
 }
 
 function handleHostMessage(event) {
@@ -1120,23 +1208,59 @@ function updateRoster() {
 function joinRoom() {
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   const name = document.getElementById('join-name').value.trim();
-  if (!code || code.length !== 4) { showToast('Ingresa un código de 4 letras', ''); return; }
-  if (!name) { showToast('Ingresa tu nombre', ''); return; }
+  if (!code || code.length !== 4) { 
+    showToast('⚠️ Ingresa un código de 4 caracteres (ej: A1B2)', ''); 
+    return; 
+  }
+  if (!name) { 
+    showToast('⚠️ Ingresa tu nombre', ''); 
+    return; 
+  }
 
-  // Check if room exists
+  // Primero intentar Firebase (si está disponible)
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + code).once('value')
+      .then(snapshot => {
+        if (snapshot.exists()) {
+          const room = snapshot.val();
+          if (room.phase === 'lobby' || room.phase === 'question') {
+            proceedToJoin(code, name);
+          } else {
+            showToast('❌ El juego ya ha terminado.\n\nEspera a que el profesor inicie una nueva ronda.', '');
+          }
+        } else {
+          // No encontrado en Firebase, intentar localStorage
+          tryLocalStorage(code, name);
+        }
+      })
+      .catch(err => {
+        console.warn('Firebase no disponible, usando localStorage:', err);
+        tryLocalStorage(code, name);
+      });
+  } else {
+    // Firebase no inicializado, usar localStorage
+    tryLocalStorage(code, name);
+  }
+}
+
+function tryLocalStorage(code, name) {
   const roomData = localStorage.getItem('dcq_room_' + code);
   if (!roomData) { 
-    showToast('Sala no encontrada. Verifica el código que aparece en el proyector.', ''); 
+    showToast('❌ Sala "' + code + '" no encontrada.\n\nVerifica el código en el proyector del profesor.', ''); 
+    console.warn('Sala no encontrada. Código:', code);
     return; 
   }
-  const room = JSON.parse(roomData);
   
-  // Allow joining if room is in lobby (waiting) or starting question
+  const room = JSON.parse(roomData);
   if (room.phase !== 'lobby' && room.phase !== 'question') { 
-    showToast('El juego ha terminado. Espera la siguiente ronda.', ''); 
+    showToast('❌ El juego ya ha terminado.\n\nEspera a que el profesor inicie una nueva ronda.', ''); 
     return; 
   }
+  
+  proceedToJoin(code, name);
+}
 
+function proceedToJoin(code, name) {
   STATE.mode = 'player';
   STATE.roomCode = code;
   STATE.myId = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
@@ -1146,7 +1270,7 @@ function joinRoom() {
   BC = new BroadcastChannel('devcycle_' + code);
   BC.onmessage = handlePlayerMessage;
 
-  // Send join
+  // Send join message to host
   BC.postMessage({ type:'join', roomCode: code, playerId: STATE.myId, name, avatar: STATE.selectedAvatar });
 
   document.getElementById('pw-avatar').textContent = STATE.myAvatar;
@@ -1154,10 +1278,26 @@ function joinRoom() {
   document.getElementById('pw-room').textContent = STATE.roomCode;
 
   goTo('player-waiting');
-  showToast('¡Conectado a la sala ' + code + '!', 'green');
+  showToast('✅ Conectado a sala: ' + code, 'green');
 
-  // Poll for game start
+  // Poll for game start (localStorage) + escuchar Firebase
   STATE.pollInterval = setInterval(checkGameStart, 800);
+  
+  // Si Firebase está disponible, también escuchar ahí
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + code).on('value', snapshot => {
+      if (snapshot.exists()) {
+        const room = snapshot.val();
+        if (room.phase === 'question' && STATE.phase !== 'question') {
+          clearInterval(STATE.pollInterval);
+          loadPlayerQuestion(room);
+        } else if (room.phase === 'done') {
+          clearInterval(STATE.pollInterval);
+          showFinalScores(room.players);
+        }
+      }
+    });
+  }
 }
 
 function checkGameStart() {
@@ -1230,6 +1370,7 @@ function loadHostQuestion() {
   saveRoomState();
 
   // Update topbar
+  document.getElementById('hg-room-code').textContent = STATE.roomCode;
   document.getElementById('hg-qnum').textContent = `${STATE.currentQ+1}/10`;
   document.getElementById('hg-players').textContent = Object.keys(STATE.players).length;
   document.getElementById('hg-diff').textContent = diff.name;
@@ -1596,14 +1737,34 @@ function showFinalScores(playersObj) {
 // ══════════════════════════════════════
 function resetAll() {
   if (STATE.mode === 'host') {
-    resetAllAndGoHome();
-  } else {
+    // Profesor: resetear sesión completamente
     clearInterval(STATE.timerInterval);
     clearInterval(STATE.pollInterval);
     if (BC) { BC.close(); BC = null; }
     if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
-    STATE = { mode:null, roomCode:null, difficulty:'hard', players:{}, myId:null, myName:null, myAvatar:null, currentQ:0, phase:'lobby', timerInterval:null, timerValue:0, selectedAvatar:AVATARS[0] };
+    resetAllAndGoHome();
+  } else {
+    // Estudiante: resetear solo sus datos
+    clearInterval(STATE.timerInterval);
+    clearInterval(STATE.pollInterval);
+    if (BC) { BC.close(); BC = null; }
+    STATE = { 
+      mode: null, 
+      roomCode: null, 
+      difficulty: 'hard', 
+      players: {}, 
+      myId: null, 
+      myName: null, 
+      myAvatar: null, 
+      currentQ: 0, 
+      phase: 'lobby', 
+      timerInterval: null, 
+      timerValue: 0, 
+      selectedAvatar: AVATARS[0],
+      teacherAuthenticated: false
+    };
     goTo('landing');
+    showToast('Sesión finalizada', 'green');
   }
 }
 

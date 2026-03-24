@@ -37,17 +37,31 @@ Luego activa GitHub Pages en **Settings → Pages**.
 
 ## 🎯 Cómo usar en clase
 
+### ✅ Opción 1: Red Local (Funciona ya)
+**Profesor y estudiantes en la MISMA red / mismo dispositivo**
+- Sin configuración adicional
+- Perfecto para aula presencial
+
+### 🌐 Opción 2: Cualquier Red (Con Firebase)
+**Profesor y estudiantes en DIFERENTES redes**
+- ⚙️ Ver: [FIREBASE_CONFIG.md](FIREBASE_CONFIG.md)
+- Configura en 10 minutos
+
+---
+
 ### El Profesor (pantalla grande / proyector)
 1. Abre el link → **"Soy el Profesor"**
-2. Elige la dificultad → **CREAR SALA**
-3. Aparece un código de 4 letras → proyéctalo
-4. Espera que los estudiantes se conecten → **INICIAR JUEGO**
+2. Ingresa la contraseña que aparece al inicio
+3. Elige la dificultad → **CREAR SALA**
+4. Aparece un código de 4 letras → proyéctalo
+5. Espera que los estudiantes se conecten → **INICIAR JUEGO**
 
 ### Los Estudiantes (celular o PC)
-1. Abren el mismo link → **"Soy Estudiante"**
+1. Abren el MISMO link → **"Soy Estudiante"**
 2. Ingresan el código del proyector
 3. Escriben su nombre y eligen avatar
 4. ¡A jugar!
+
 
 > ⚠️ **Importante:** La comunicación entre pantallas usa `BroadcastChannel`, que funciona entre **pestañas del mismo navegador**. Para dispositivos físicos distintos, todos deben abrir el mismo link en la **misma red**.  
 > La solución más robusta para clase real: usar el link de GitHub Pages (todos abren la misma URL).
