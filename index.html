@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DevCycle Quest — Multijugador</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -341,40 +341,7 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
   </div>
 </div>
 
-<!-- ══════════════════════════════
-  TEACHER CREDENTIALS (Mostrar claves)
-══════════════════════════════ -->
-<div id="teacher-credentials" class="screen">
-  <div style="padding:24px;flex:1;display:flex;align-items:center;justify-content:center;">
-  <div class="setup-box">
-    <div class="setup-title" style="color:var(--cyan);margin-bottom:12px;text-align:center;">🔐 CREDENCIALES DEL PROFESOR</div>
-    <div class="setup-sub" style="margin-bottom:24px;text-align:center;">Tus credenciales de acceso han sido generadas</div>
-
-    <div style="background:var(--panel2);border:2px solid var(--border2);border-radius:8px;padding:24px;margin-bottom:20px;text-align:center;">
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:2px;margin-bottom:12px;">USUARIO</div>
-      <div id="cred-username" style="font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--cyan);font-weight:900;letter-spacing:2px;margin-bottom:24px;padding:12px;background:var(--panel);border-radius:6px;cursor:pointer;user-select:all;" title="Click para copiar">----</div>
-      
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);letter-spacing:2px;margin-bottom:12px;">CONTRASEÑA</div>
-      <div id="cred-password" style="font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--orange);font-weight:900;letter-spacing:2px;margin-bottom:24px;padding:12px;background:var(--panel);border-radius:6px;cursor:pointer;user-select:all;" title="Click para copiar">----</div>
-
-      <button class="btn btn-dim" onclick="copyToClipboard('cred-username'); copyToClipboard('cred-password');" style="width:100%;margin-bottom:12px;">📋 COPIAR AMBAS</button>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--green);">✓ Credenciales copiadas</div>
-    </div>
-
-    <div style="background:rgba(255,107,53,.1);border:1px solid var(--orange);border-radius:8px;padding:16px;margin-bottom:20px;">
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--orange);letter-spacing:1px;margin-bottom:8px;">⚠️ IMPORTANTE</div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--text);line-height:1.6;">
-        • Guarda estas credenciales en un lugar seguro<br>
-        • No las compartas con los estudiantes<br>
-        • Cada sesión genera nuevas credenciales<br>
-        • Usa estas credenciales para acceder a la configuración
-      </div>
-    </div>
-
-    <button class="btn btn-cyan btn-full" onclick="goTo('host-login')">CONTINUAR AL LOGIN ▶</button>
-  </div>
-  </div>
-</div>
+<!-- Se omitió la pantalla de credenciales de profesor por seguridad -->
 
 <!-- ══════════════════════════════
   HOST LOGIN (Validar credenciales)
@@ -401,8 +368,8 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
     </div>
     
     <div style="margin-top:20px;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:8px;text-align:center;">
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:1px;margin-bottom:8px;">¿Olvidaste credenciales?</div>
-      <button class="btn btn-dim" onclick="resetAllAndGoHome()" style="width:100%;font-size:.65rem;">↻ GENERAR NUEVAS CREDENCIALES</button>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);letter-spacing:1px;margin-bottom:8px;">Nota de Seguridad</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--text);">Solo el profesor titular conoce las credenciales de esta sala.</div>
     </div>
   </div>
   </div>
@@ -1009,9 +976,7 @@ function generateTeacherCredentials() {
 function initTeacherAccess() {
   // Siempre usar credenciales fijas
   window.teacherCredentials = generateTeacherCredentials();
-  document.getElementById('cred-username').textContent = window.teacherCredentials.username;
-  document.getElementById('cred-password').textContent = window.teacherCredentials.password;
-  goTo('teacher-credentials');
+  goTo('host-login');
 }
 
 function copyToClipboard(elementId) {
