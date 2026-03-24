@@ -991,11 +991,12 @@ function generateRandomString(length = 8) {
   return result;
 }
 
+
+// Credenciales fijas para profesor
 function generateTeacherCredentials() {
-  const username = 'PROF_' + generateRandomString(8);
-  const password = generateRandomString(12);
+  const username = 'PROFESOR';
+  const password = 'CDP2026-2*';
   const passwordHash = CryptoJS.SHA256(password).toString();
-  
   return {
     username: username,
     password: password,
@@ -1004,20 +1005,12 @@ function generateTeacherCredentials() {
   };
 }
 
+
 function initTeacherAccess() {
-  // Verificar si ya existen credenciales en esta sesión
-  if (window.teacherCredentials) {
-    goTo('host-login');
-    return;
-  }
-  
-  // Generar nuevas credenciales
+  // Siempre usar credenciales fijas
   window.teacherCredentials = generateTeacherCredentials();
-  
-  // Mostrar credenciales
   document.getElementById('cred-username').textContent = window.teacherCredentials.username;
   document.getElementById('cred-password').textContent = window.teacherCredentials.password;
-  
   goTo('teacher-credentials');
 }
 
