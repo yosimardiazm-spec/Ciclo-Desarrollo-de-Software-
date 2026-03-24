@@ -1101,12 +1101,46 @@ function createRoom() {
   document.getElementById('room-code-display').textContent = STATE.roomCode;
   document.getElementById('hw-code-display').textContent = STATE.roomCode;
 
-  // Open BroadcastChannel
+  // Open BroadcastChannel (same-browser tabs)
   BC = new BroadcastChannel('devcycle_' + STATE.roomCode);
   BC.onmessage = handleHostMessage;
 
-  // Save room state to localStorage - IMPORTANTE para que estudiantes la encuentren
+  // Save room state
   saveRoomState();
+
+  // === FIREBASE: Listen for players joining from ANY device ===
+  if (fbDatabase) {
+    // Listen for new players added to Firebase
+    fbDatabase.ref('rooms/' + STATE.roomCode + '/joinRequests').on('child_added', snapshot => {
+      const playerData = snapshot.val();
+      if (!playerData || STATE.players[playerData.playerId]) return; // Already added
+      if (STATE.phase !== 'lobby') return;
+      
+      STATE.players[playerData.playerId] = {
+        id: playerData.playerId,
+        name: playerData.name,
+        avatar: playerData.avatar,
+        xp: 0,
+        lives: DIFFICULTY[STATE.difficulty].lives,
+        correct: 0,
+        combo: 0,
+      };
+      saveRoomState();
+      updateRoster();
+      showToast('🎮 ' + playerData.name + ' se unió', 'green');
+      console.log('✅ Jugador desde Firebase:', playerData.name);
+    });
+
+    // Listen for answers from remote players
+    fbDatabase.ref('rooms/' + STATE.roomCode + '/answers').on('child_added', snapshot => {
+      const answerData = snapshot.val();
+      if (!answerData) return;
+      // Process like a BC answer message
+      handleRemoteAnswer(answerData);
+      // Remove processed answer
+      snapshot.ref.remove();
+    });
+  }
 
   goTo('host-waiting');
   
@@ -1114,6 +1148,33 @@ function createRoom() {
   console.log('📍 Guardada en localStorage como:', 'dcq_room_' + STATE.roomCode);
   
   showToast('✅ SALA CREADA: ' + STATE.roomCode + '\n\n📋 Comparte este código con los estudiantes', 'gold');
+}
+
+function handleRemoteAnswer(msg) {
+  if (STATE.phase !== 'question') return;
+  const p = STATE.players[msg.playerId];
+  if (!p || p.answered) return;
+  p.answered = true;
+  p.lastAnswer = msg.optionIndex;
+  p.lastCorrect = msg.correct;
+
+  if (msg.correct) {
+    p.combo++;
+    const bonus = Math.max(0, STATE.timerValue) * 3;
+    const comboBonus = p.combo >= 2 ? (p.combo - 1) * 25 : 0;
+    p.xp += 100 + bonus + comboBonus;
+    p.correct++;
+  } else {
+    p.combo = 0;
+    if (DIFFICULTY[STATE.difficulty].immortal) {
+      p.lives = 0;
+    } else {
+      p.lives = Math.max(0, p.lives - 1);
+    }
+  }
+  saveRoomState();
+  updateAnsweredCount();
+  updateHostLeaderboard();
 }
 
 function saveRoomState() {
@@ -1263,8 +1324,18 @@ function proceedToJoin(code, name) {
   BC = new BroadcastChannel('devcycle_' + code);
   BC.onmessage = handlePlayerMessage;
 
-  // Send join message to host
+  // Send join message via BroadcastChannel (same browser)
   BC.postMessage({ type:'join', roomCode: code, playerId: STATE.myId, name, avatar: STATE.selectedAvatar });
+
+  // === ALSO write join to Firebase (cross-device) ===
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + code + '/joinRequests/' + STATE.myId).set({
+      playerId: STATE.myId,
+      name: name,
+      avatar: STATE.selectedAvatar,
+      joinedAt: Date.now()
+    }).catch(e => console.warn('Firebase join write error:', e));
+  }
 
   document.getElementById('pw-avatar').textContent = STATE.myAvatar;
   document.getElementById('pw-name').textContent = STATE.myName;
@@ -1273,17 +1344,24 @@ function proceedToJoin(code, name) {
   goTo('player-waiting');
   showToast('✅ Conectado a sala: ' + code, 'green');
 
-  // Poll for game start (localStorage) + escuchar Firebase
+  // Poll for game start (localStorage)
   STATE.pollInterval = setInterval(checkGameStart, 800);
   
-  // Si Firebase está disponible, también escuchar ahí
+  // Listen for room changes via Firebase (cross-device)
   if (fbDatabase) {
     fbDatabase.ref('rooms/' + code).on('value', snapshot => {
       if (snapshot.exists()) {
         const room = snapshot.val();
         if (room.phase === 'question' && STATE.phase !== 'question') {
           clearInterval(STATE.pollInterval);
+          STATE.currentQ = room.currentQ || 0;
           loadPlayerQuestion(room);
+        } else if (room.phase === 'reveal' && STATE.phase === 'question') {
+          // Auto-reveal if player hasn't answered
+          const correctIdx = room.currentOptions ? room.currentOptions.findIndex(o => o.correct) : -1;
+          if (!STATE.hasAnswered && correctIdx >= 0) {
+            revealPlayerAnswer({ correctIndex: correctIdx, question: QUESTIONS[room.currentQ || 0] });
+          }
         } else if (room.phase === 'done') {
           clearInterval(STATE.pollInterval);
           showFinalScores(room.players);
@@ -1624,7 +1702,7 @@ function playerAnswer(idx, correct) {
     showPlayerFeedback(false, QUESTIONS[STATE.currentQ]);
   }
 
-  // Send to host
+  // Send to host via BroadcastChannel (same browser)
   BC.postMessage({
     type: 'answer',
     roomCode: STATE.roomCode,
@@ -1633,6 +1711,17 @@ function playerAnswer(idx, correct) {
     correct: correct,
     timerValue: STATE.timerValue,
   });
+
+  // === ALSO write answer to Firebase (cross-device) ===
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + STATE.roomCode + '/answers').push({
+      playerId: STATE.myId,
+      optionIndex: idx,
+      correct: correct,
+      timerValue: STATE.timerValue,
+      timestamp: Date.now()
+    }).catch(e => console.warn('Firebase answer write error:', e));
+  }
 
   updatePlayerTopbar();
 
@@ -1654,6 +1743,12 @@ function timeOut() {
   document.querySelectorAll('.popt').forEach(b => b.disabled = true);
   showPlayerFeedback(false, QUESTIONS[STATE.currentQ], true);
   BC.postMessage({ type:'answer', roomCode: STATE.roomCode, playerId: STATE.myId, optionIndex:-1, correct:false, timerValue:0 });
+  // Firebase timeout answer
+  if (fbDatabase) {
+    fbDatabase.ref('rooms/' + STATE.roomCode + '/answers').push({
+      playerId: STATE.myId, optionIndex: -1, correct: false, timerValue: 0, timestamp: Date.now()
+    }).catch(e => console.warn('Firebase timeout answer error:', e));
+  }
   updatePlayerTopbar();
 }
 
