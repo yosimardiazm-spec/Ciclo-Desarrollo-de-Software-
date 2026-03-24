@@ -1,7 +1,7 @@
 # 🎮 DevCycle Quest — Ciclo de Desarrollo de Software
 
 > Juego educativo multijugador para estudiantes de **Ingeniería Informática (8vo Semestre)**.  
-> Temática: NovaTech S.A.S. debe entregar un sistema hospitalario. Tú eres el Tech Lead.
+> Temática: Capstone Design Project Hospital System debe ser entregado. Tú eres el Tech Lead.
 
 🔗 **Jugar en vivo:** [https://TU-USUARIO.github.io/devcycle-quest](https://TU-USUARIO.github.io/devcycle-quest)
 

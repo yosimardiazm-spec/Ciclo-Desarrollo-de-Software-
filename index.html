@@ -322,7 +322,7 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
       <span class="logo-main">DEV<em>CYCLE</em><br>QUEST</span>
       <span class="logo-sub">// CICLO DE DESARROLLO DE SOFTWARE — EDICIÓN MULTIJUGADOR</span>
     </div>
-    <p style="color:var(--dim);font-size:.9rem;margin-bottom:28px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">Ingeniería Informática · 8vo Semestre · NovaTech Hospital System</p>
+    <p style="color:var(--dim);font-size:.9rem;margin-bottom:28px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">Ingeniería Informática · 8vo Semestre · Capstone Design Project Hospital System</p>
     <div class="mode-cards">
       <div class="mode-card host" onclick="initTeacherAccess()">
         <span class="mc-icon">🖥️</span>
@@ -661,7 +661,7 @@ input[type=text].name-input{letter-spacing:1px;text-transform:none;}
 <div id="final-scores" class="screen">
   <div class="fs-inner">
     <div class="fs-title" id="fs-title">🏆 FIN DE LA MISIÓN</div>
-    <div class="fs-sub" id="fs-sub">EVALUACIÓN FINAL — NOVALTECH HOSPITAL SYSTEM</div>
+    <div class="fs-sub" id="fs-sub">EVALUACIÓN FINAL — CAPSTONE DESIGN PROJECT HOSPITAL SYSTEM</div>
     <div class="podium" id="fs-podium"></div>
     <div class="full-lb" id="fs-full-lb"></div>
     <div style="text-align:center;">
@@ -688,7 +688,7 @@ const DIFFICULTY = {
 const QUESTIONS = [
   {
     phase:'PLANEACIÓN', role:'🗺️ Project Manager',
-    story:'El CTO acaba de renunciar. NovaTech ganó el contrato del hospital pero no hay plan. El cliente ya pagó el anticipo. El equipo pregunta: ¿por dónde empezamos?',
+    story:'El CTO acaba de renunciar. Capstone Design Project Hospital System ganó el contrato del hospital pero no hay plan. El cliente ya pagó el anticipo. El equipo pregunta: ¿por dónde empezamos?',
     question:'¿Cuál es el primer artefacto que debe producir el equipo?',
     hint:'Piensa en qué necesitas saber ANTES de escribir una sola línea de código.',
     options:[
@@ -1701,7 +1701,7 @@ function showFinalScores(playersObj) {
   const pct = Math.round((avgCorrect / QUESTIONS.length) * 100);
 
   let title, sub;
-  if (pct >= 80) { title = '🏆 HOSPITAL SYSTEM: ENTREGADO'; sub = 'NovaTech firma el contrato de mantenimiento. ¡Equipo élite!'; }
+  if (pct >= 80) { title = '🏆 CAPSTONE DESIGN PROJECT HOSPITAL SYSTEM: ENTREGADO'; sub = '¡Contrato de mantenimiento firmado! ¡Equipo élite!'; }
   else if (pct >= 60) { title = '✅ SISTEMA FUNCIONAL'; sub = 'El hospital acepta con observaciones. Hay deuda técnica.'; }
   else { title = '💀 CONTRATO EN RIESGO'; sub = 'El equipo necesita reforzar los fundamentos del SDLC.'; }
 
