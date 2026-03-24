@@ -888,6 +888,17 @@ let BC = null;
   // Inicializar Firebase
   initFirebase();
   
+  // Restaurar autenticación de profesor si existe en sessionStorage
+  try {
+    if (sessionStorage.getItem('cdp_teacher_auth') === '1') {
+      STATE.teacherAuthenticated = true;
+      if (fbDatabase) {
+        fbDatabase.ref('gameState/hostActive').set(true);
+        fbDatabase.ref('gameState/hostActive').onDisconnect().remove();
+      }
+    }
+  } catch(e){}
+  
   // Limpiar salas antiguas/completadas del localStorage
   Object.keys(localStorage)
     .filter(k => k.startsWith('dcq_room_'))
@@ -933,7 +944,7 @@ let BC = null;
 // ══════════════════════════════════════
 function goTo(screenId) {
   // Listar pantallas solo para profesor autenticado
-  const professorScreens = ['host-setup', 'host-waiting', 'host-game', 'teacher-credentials', 'host-login'];
+  const professorScreens = ['host-setup', 'host-waiting', 'host-game'];
   
   if (professorScreens.includes(screenId) && !STATE.teacherAuthenticated) {
     showToast('🚫 Acceso denegado.\n\nEsta es una vista solo para el profesor.', '');
@@ -990,7 +1001,7 @@ function copyToClipboard(elementId) {
 }
 
 
-function loginTeacher() {
+async function loginTeacher() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value.trim();
 
@@ -1008,6 +1019,24 @@ function loginTeacher() {
   const passwordHash = CryptoJS.SHA256(password).toString();
 
   if (username === window.teacherCredentials.username && passwordHash === window.teacherCredentials.hash) {
+    if (fbDatabase) {
+      try {
+        const snapshot = await Promise.race([
+          fbDatabase.ref('gameState/hostActive').once('value'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        if (snapshot && snapshot.val() === true) {
+          showToast('❌ Acceso denegado: Otro profesor ya está activo en el sistema.', '');
+          return;
+        }
+        await fbDatabase.ref('gameState/hostActive').set(true);
+        fbDatabase.ref('gameState/hostActive').onDisconnect().remove();
+      } catch(e) { 
+        console.warn('Firebase sync timeout o error:', e); 
+        showToast('⚠️ Modo de red local. No se pudo verificar la exclusividad de profesor.', '');
+      }
+    }
+
     // Login exitoso
     document.getElementById('login-username').value = '';
     document.getElementById('login-password').value = '';
@@ -1029,6 +1058,11 @@ function resetAllAndGoHome() {
   if (BC) { BC.close(); BC = null; }
   if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
   window.teacherCredentials = null;
+  
+  if (STATE.teacherAuthenticated && fbDatabase) {
+    fbDatabase.ref('gameState/hostActive').set(null).catch(e => console.error(e));
+  }
+  
   STATE.teacherAuthenticated = false;
   try { sessionStorage.removeItem('cdp_teacher_auth'); } catch(e){}
   STATE = { mode:null, roomCode:null, difficulty:'hard', players:{}, myId:null, myName:null, myAvatar:null, currentQ:0, phase:'lobby', timerInterval:null, timerValue:0, selectedAvatar:AVATARS[0] };
@@ -1083,57 +1117,34 @@ function createRoom() {
 }
 
 function saveRoomState() {
-
-  (function init() {
-    // Inicializar Firebase
-    initFirebase();
-
-    // Restaurar autenticación de profesor si existe en sessionStorage
-    try {
-      if (sessionStorage.getItem('cdp_teacher_auth') === '1') {
-        STATE.teacherAuthenticated = true;
-      }
-    } catch(e){}
-
-    // Limpiar salas antiguas/completadas del localStorage
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('dcq_room_'))
-      .forEach(k => {
-        try {
-          const room = JSON.parse(localStorage.getItem(k));
-          if (room.phase === 'done') {
-            localStorage.removeItem(k);
-          }
-        } catch (e) {
-          localStorage.removeItem(k);
-        }
-      });
-
-    // Particles
-    const pEl = document.getElementById('particles');
-    for (let i = 0; i < 20; i++) {
-      const p = document.createElement('div');
-      p.className = 'particle';
-      p.style.left = Math.random() * 100 + '%';
-      p.style.animationDuration = (8 + Math.random() * 12) + 's';
-      p.style.animationDelay = (Math.random() * 10) + 's';
-      pEl.appendChild(p);
+  try {
+    localStorage.setItem('dcq_room_' + STATE.roomCode, JSON.stringify(STATE));
+    if (fbDatabase && STATE.roomCode) {
+      fbDatabase.ref('rooms/' + STATE.roomCode).set(STATE).catch(e => console.error("Firebase err:", e));
     }
+  } catch (e) { console.error('Error saving state:', e); }
+}
 
-    // Avatar grid
-    const ag = document.getElementById('avatar-grid');
-    AVATARS.forEach((a, i) => {
-      const d = document.createElement('div');
-      d.className = 'avatar-opt' + (i === 0 ? ' sel' : '');
-      d.textContent = a;
-      d.onclick = () => {
-        document.querySelectorAll('.avatar-opt').forEach(x => x.classList.remove('sel'));
-        d.classList.add('sel');
-        STATE.selectedAvatar = a;
-      };
-      ag.appendChild(d);
-    });
-  })();
+function handleHostMessage(event) {
+  const msg = event.data;
+  if (!msg || msg.roomCode !== STATE.roomCode) return;
+
+  if (msg.type === 'join') {
+    if (STATE.phase !== 'lobby') return; // Cannot join mid-game
+    STATE.players[msg.playerId] = {
+      id: msg.playerId,
+      name: msg.name,
+      avatar: msg.avatar,
+      xp: 0,
+      lives: DIFFICULTY[STATE.difficulty].lives,
+      correct: 0,
+      combo: 0,
+    };
+    saveRoomState();
+    updateRoster();
+    BC.postMessage({ type: 'joined', roomCode: STATE.roomCode, playerId: msg.playerId, difficulty: STATE.difficulty });
+  }
+
   if (msg.type === 'answer') {
     if (STATE.phase !== 'question') return;
     const p = STATE.players[msg.playerId];
@@ -1198,9 +1209,12 @@ function joinRoom() {
 
   // Primero intentar Firebase (si está disponible)
   if (fbDatabase) {
-    fbDatabase.ref('rooms/' + code).once('value')
+    Promise.race([
+      fbDatabase.ref('rooms/' + code).once('value'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500))
+    ])
       .then(snapshot => {
-        if (snapshot.exists()) {
+        if (snapshot && snapshot.exists()) {
           const room = snapshot.val();
           if (room.phase === 'lobby' || room.phase === 'question') {
             proceedToJoin(code, name);
@@ -1213,7 +1227,7 @@ function joinRoom() {
         }
       })
       .catch(err => {
-        console.warn('Firebase no disponible, usando localStorage:', err);
+        console.warn('Firebase no disponible o timeout, usando localStorage:', err);
         tryLocalStorage(code, name);
       });
   } else {
