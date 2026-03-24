@@ -867,7 +867,8 @@ const FIREBASE_CONFIG = {
   appId: "1:258218101514:web:619f0273ab3fe2ab6288f3"
 };
 
-// Inicializar Firebase
+
+// Inicializar Firebase al cargar la página
 let fbApp = null;
 let fbDatabase = null;
 
@@ -879,10 +880,19 @@ function initFirebase() {
     return true;
   } catch (error) {
     console.error('❌ Error inicializando Firebase:', error);
-    showToast('⚠️ Firebase no configurado. Funciona en red local.', '');
+    let msg = '⚠️ Firebase no configurado. Funciona en red local.';
+    if (location.protocol === 'file:') {
+      msg += '\n\nAbre el archivo desde un servidor web (ej: Live Server, GitHub Pages) para usar juego en red.';
+    }
+    showToast(msg, '');
     return false;
   }
 }
+
+// Forzar inicialización de Firebase al cargar la página
+window.addEventListener('DOMContentLoaded', () => {
+  initFirebase();
+});
 
 // ══════════════════════════════════════
 let STATE = {
