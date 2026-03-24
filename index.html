@@ -1966,6 +1966,9 @@ function proceedToJoin(code, name) {
     fbDatabase.ref('rooms/' + code).on('value', snapshot => {
       if (snapshot.exists()) {
         const room = snapshot.val();
+        // Update live rank during the game
+        updatePlayerRank(room);
+
         // Force load if phase is question AND (we aren't in question phase OR the question index has changed)
         if (room.phase === 'question' && (STATE.phase !== 'question' || room.currentQ !== STATE.currentQ)) {
           clearInterval(STATE.pollInterval);
@@ -1990,6 +1993,10 @@ function checkGameStart() {
   const roomData = localStorage.getItem('dcq_room_' + STATE.roomCode);
   if (!roomData) return;
   const room = JSON.parse(roomData);
+  
+  // Update live rank for local mode too
+  updatePlayerRank(room);
+
   if (room.phase === 'question') {
     clearInterval(STATE.pollInterval);
     loadPlayerQuestion(room);
@@ -2252,6 +2259,15 @@ function endGame() {
 // PLAYER GAME
 // ══════════════════════════════════════
 function loadPlayerQuestion(data) {
+  // If player has no lives, they cannot play. Stay on waiting screen.
+  if (STATE.myLives <= 0) {
+    STATE.phase = 'dead';
+    goTo('player-waiting');
+    document.getElementById('pw-status').textContent = '💀 GAME OVER — SIN VIDAS';
+    document.getElementById('pw-status').style.color = 'var(--red)';
+    return;
+  }
+
   STATE.phase = 'question';
   STATE.hasAnswered = false;
   goTo('player-game');
@@ -2359,11 +2375,15 @@ function playerAnswer(idx, correct) {
 
   updatePlayerTopbar();
 
-  // Poll for next question
+  // Poll for next question and update rank
   STATE.pollInterval = setInterval(() => {
     const roomData = localStorage.getItem('dcq_room_' + STATE.roomCode);
     if (!roomData) return;
     const room = JSON.parse(roomData);
+    
+    // Update rank while waiting
+    updatePlayerRank(room);
+
     if (room.phase === 'done') {
       clearInterval(STATE.pollInterval);
       showFinalScores(room.players);
@@ -2387,12 +2407,42 @@ function timeOut() {
 }
 
 function showPlayerFeedback(ok, q, timeout) {
+  const isDead = STATE.myLives <= 0;
   const fb = document.getElementById('pg-feedback');
   fb.className = 'player-fb show ' + (ok ? 'ok' : 'bad');
-  document.getElementById('pg-fb-title').textContent = timeout ? '⏰ TIEMPO AGOTADO' : (ok ? '✅ CORRECTO' : '❌ INCORRECTO');
-  document.getElementById('pg-fb-body').textContent = ok ? q.ok.replace('✅ CORRECTO — ','') : q.bad.replace('❌ ERROR — ','');
-  document.getElementById('pg-fb-concept').textContent = q.concept;
+  
+  if (isDead) {
+    document.getElementById('pg-fb-title').textContent = '💀 GAME OVER';
+    document.getElementById('pg-fb-body').textContent = 'Has agotado todas tus vidas. No podrás responder más preguntas.';
+    document.getElementById('pg-fb-concept').textContent = 'Espera a que el profesor termine el juego para ver los resultados finales.';
+  } else {
+    document.getElementById('pg-fb-title').textContent = timeout ? '⏰ TIEMPO AGOTADO' : (ok ? '✅ CORRECTO' : '❌ INCORRECTO');
+    document.getElementById('pg-fb-body').textContent = ok ? q.ok.replace('✅ CORRECTO — ','') : q.bad.replace('❌ ERROR — ','');
+    document.getElementById('pg-fb-concept').textContent = q.concept;
+  }
+  
   document.getElementById('pg-waiting').style.display = 'block';
+  
+  if (isDead) {
+    const rankEl = document.getElementById('pg-rank-display');
+    if (rankEl) rankEl.textContent = '💀 HAS PERDIDO — ESPERA EL FINAL';
+  }
+}
+
+function updatePlayerRank(room) {
+  if (!room || !room.players) return;
+  const players = Object.values(room.players).sort((a,b) => (b.xp || 0) - (a.xp || 0));
+  const myIndex = players.findIndex(p => p.playerId === STATE.myId);
+  if (myIndex >= 0) {
+    const rankEl = document.getElementById('pg-rank-display');
+    if (rankEl) {
+      if (STATE.myLives <= 0) {
+        rankEl.textContent = `💀 POSICIÓN: ${myIndex + 1} / ${players.length} (SIN VIDAS)`;
+      } else {
+        rankEl.textContent = `📊 POSICIÓN: ${myIndex + 1} / ${players.length}`;
+      }
+    }
+  }
 }
 
 function revealPlayerAnswer(msg) {
