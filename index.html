@@ -1024,29 +1024,30 @@ function copyToClipboard(elementId) {
   });
 }
 
+
 function loginTeacher() {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value.trim();
-  
+
   if (!username || !password) {
     showToast('Ingresa usuario y contraseña', '');
     return;
   }
-  
+
   if (!window.teacherCredentials) {
     showToast('Credenciales no encontradas. Intenta de nuevo.', '');
     return;
   }
-  
+
   // Validar contra las credenciales almacenadas
   const passwordHash = CryptoJS.SHA256(password).toString();
-  
-  if (username === window.teacherCredentials.username && 
-      passwordHash === window.teacherCredentials.hash) {
+
+  if (username === window.teacherCredentials.username && passwordHash === window.teacherCredentials.hash) {
     // Login exitoso
     document.getElementById('login-username').value = '';
     document.getElementById('login-password').value = '';
     STATE.teacherAuthenticated = true;
+    try { sessionStorage.setItem('cdp_teacher_auth', '1'); } catch(e){}
     goTo('host-setup');
     showToast('✓ Acceso concedido. Bienvenido Profesor.', 'green');
   } else {
@@ -1056,6 +1057,7 @@ function loginTeacher() {
   }
 }
 
+
 function resetAllAndGoHome() {
   clearInterval(STATE.timerInterval);
   clearInterval(STATE.pollInterval);
@@ -1063,6 +1065,7 @@ function resetAllAndGoHome() {
   if (STATE.roomCode) localStorage.removeItem('dcq_room_' + STATE.roomCode);
   window.teacherCredentials = null;
   STATE.teacherAuthenticated = false;
+  try { sessionStorage.removeItem('cdp_teacher_auth'); } catch(e){}
   STATE = { mode:null, roomCode:null, difficulty:'hard', players:{}, myId:null, myName:null, myAvatar:null, currentQ:0, phase:'lobby', timerInterval:null, timerValue:0, selectedAvatar:AVATARS[0] };
   goTo('landing');
   showToast('Sesión cerrada', '');
@@ -1115,49 +1118,57 @@ function createRoom() {
 }
 
 function saveRoomState() {
-  const roomData = {
-    code: STATE.roomCode,
-    difficulty: STATE.difficulty,
-    phase: STATE.phase,
-    currentQ: STATE.currentQ,
-    players: STATE.players,
-    question: STATE.currentQ < QUESTIONS.length ? QUESTIONS[STATE.currentQ] : null,
-    updatedAt: new Date().toISOString(),
-  };
-  
-  // Guardar en localStorage (para red local)
-  localStorage.setItem('dcq_room_' + STATE.roomCode, JSON.stringify(roomData));
-  
-  // Guardar en Firebase (para redes diferentes)
-  if (fbDatabase) {
-    fbDatabase.ref('rooms/' + STATE.roomCode).set(roomData)
-      .catch(err => console.warn('⚠️ Error sincronizando con Firebase:', err));
-  }
-}
 
-function handleHostMessage(event) {
-  const msg = event.data;
-  if (msg.roomCode !== STATE.roomCode) return;
+  (function init() {
+    // Inicializar Firebase
+    initFirebase();
 
-  if (msg.type === 'join') {
-    // Permitir unirse en lobby o en question (si se unen tarde)
-    if (STATE.phase !== 'lobby' && STATE.phase !== 'question') return;
-    STATE.players[msg.playerId] = {
-      id: msg.playerId,
-      name: msg.name,
-      avatar: msg.avatar,
-      xp: 0,
-      lives: DIFFICULTY[STATE.difficulty].lives,
-      correct: 0,
-      combo: 0,
-      answered: false,
-    };
-    saveRoomState();
-    updateRoster();
-    // ACK back to player
-    BC.postMessage({ type:'joined', roomCode: STATE.roomCode, playerId: msg.playerId, difficulty: STATE.difficulty });
-  }
+    // Restaurar autenticación de profesor si existe en sessionStorage
+    try {
+      if (sessionStorage.getItem('cdp_teacher_auth') === '1') {
+        STATE.teacherAuthenticated = true;
+      }
+    } catch(e){}
 
+    // Limpiar salas antiguas/completadas del localStorage
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('dcq_room_'))
+      .forEach(k => {
+        try {
+          const room = JSON.parse(localStorage.getItem(k));
+          if (room.phase === 'done') {
+            localStorage.removeItem(k);
+          }
+        } catch (e) {
+          localStorage.removeItem(k);
+        }
+      });
+
+    // Particles
+    const pEl = document.getElementById('particles');
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (8 + Math.random() * 12) + 's';
+      p.style.animationDelay = (Math.random() * 10) + 's';
+      pEl.appendChild(p);
+    }
+
+    // Avatar grid
+    const ag = document.getElementById('avatar-grid');
+    AVATARS.forEach((a, i) => {
+      const d = document.createElement('div');
+      d.className = 'avatar-opt' + (i === 0 ? ' sel' : '');
+      d.textContent = a;
+      d.onclick = () => {
+        document.querySelectorAll('.avatar-opt').forEach(x => x.classList.remove('sel'));
+        d.classList.add('sel');
+        STATE.selectedAvatar = a;
+      };
+      ag.appendChild(d);
+    });
+  })();
   if (msg.type === 'answer') {
     if (STATE.phase !== 'question') return;
     const p = STATE.players[msg.playerId];
