@@ -1352,7 +1352,8 @@ function proceedToJoin(code, name) {
     fbDatabase.ref('rooms/' + code).on('value', snapshot => {
       if (snapshot.exists()) {
         const room = snapshot.val();
-        if (room.phase === 'question' && STATE.phase !== 'question') {
+        // Force load if phase is question AND (we aren't in question phase OR the question index has changed)
+        if (room.phase === 'question' && (STATE.phase !== 'question' || room.currentQ !== STATE.currentQ)) {
           clearInterval(STATE.pollInterval);
           STATE.currentQ = room.currentQ || 0;
           loadPlayerQuestion(room);
@@ -1772,6 +1773,7 @@ function showPlayerFeedback(ok, q, timeout) {
 }
 
 function revealPlayerAnswer(msg) {
+  STATE.phase = 'reveal';
   const opts = document.querySelectorAll('.popt');
   opts.forEach((b, i) => {
     b.disabled = true;
